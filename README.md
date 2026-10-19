@@ -327,8 +327,15 @@ mysql -u root -p ai_knowledge_db < sql/init.sql
 
 ### 2. Java 后端启动
 
+远程仓库中的 `application.yml` 不保存真实数据库密码和 JWT 密钥。启动前请设置环境变量：
+
+```powershell
+$env:DB_PASSWORD = "your-database-password"
+$env:JWT_SECRET = "your-random-jwt-secret"
+```
+
 ```bash
-# 编辑 src/main/resources/application.yml 配置 MySQL / Redis 连接
+# 如需修改 MySQL / Redis 地址，可编辑 src/main/resources/application.yml
 mvn clean package
 java -jar target/ai-knowledge-system-*.jar
 # 默认端口 8080
