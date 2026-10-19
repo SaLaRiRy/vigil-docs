@@ -82,4 +82,49 @@ export const qaLogAPI = {
     api.get(`/logs?page=${page}&size=${size}`),
 };
 
+export const approvalAPI = {
+  listPending: () => api.get('/approvals/pending'),
+  get: (approvalId) => api.get(`/approvals/${approvalId}`),
+  audit: (approvalId) => api.get(`/approvals/${approvalId}/audit`),
+  decide: (approvalId, decision, comment = '') =>
+    api.post(`/approvals/${approvalId}/decision`, { decision, comment }),
+  stream: async (onApproval, onError) => {
+    const token = localStorage.getItem('adminToken');
+    const controller = new AbortController();
+    try {
+      const response = await fetch('/api/admin/approvals/stream', {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        signal: controller.signal
+      });
+      if (!response.ok || !response.body) {
+        throw new Error(`Approval stream failed with ${response.status}`);
+      }
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const events = buffer.split('\n\n');
+        buffer = events.pop() || '';
+        events.forEach(event => {
+          const eventName = event.split('\n').find(line => line.startsWith('event:'))?.slice(6).trim();
+          const dataLine = event.split('\n').find(line => line.startsWith('data:'));
+          if (!dataLine) return;
+          try {
+            const data = JSON.parse(dataLine.slice(5).trim());
+            if (eventName === 'approval.pending' || data.approvalId) onApproval(data);
+          } catch (error) {
+            console.error('Failed to parse approval SSE event', error);
+          }
+        });
+      }
+    } catch (error) {
+      if (error.name !== 'AbortError' && onError) onError(error);
+    }
+    return () => controller.abort();
+  }
+};
+
 export default api;

@@ -1,11 +1,14 @@
 package com.demo.aiknowledge.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.demo.aiknowledge.entity.DocViewLog;
 import com.demo.aiknowledge.entity.KnowledgeDoc;
 import com.demo.aiknowledge.mapper.DocViewLogMapper;
 import com.demo.aiknowledge.mapper.KnowledgeDocMapper;
 import com.demo.aiknowledge.service.AiService;
+import com.demo.aiknowledge.service.DocumentProcessingRepository;
+import com.demo.aiknowledge.service.DocumentQueuePublisher;
 import com.demo.aiknowledge.service.KnowledgeService;
 import com.qiniu.common.QiniuException;
 import com.qiniu.http.Response;
@@ -35,6 +38,8 @@ public class KnowledgeServiceImpl implements KnowledgeService {
     private final KnowledgeDocMapper knowledgeDocMapper;
     private final DocViewLogMapper docViewLogMapper;
     private final AiService aiService;
+    private final DocumentQueuePublisher documentQueuePublisher;
+    private final DocumentProcessingRepository documentProcessingRepository;
 
     // Qiniu Cloud Kodo 配置
     @Value("${qiniu.accessKey:}")
@@ -100,9 +105,51 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         knowledgeDocMapper.insert(doc);
 
         // 3. 异步调用 AI 服务解析文档
-        aiService.parseDocument(filePath, doc.getId());
+        try {
+            documentProcessingRepository.initialize(doc.getId());
+            documentQueuePublisher.publish(doc.getId(), filePath, 1);
+        } catch (Exception e) {
+            log.error("Failed to publish document processing message for doc {}", doc.getId(), e);
+            doc.setStatus("FAILED");
+            doc.setErrorMessage("Document queued processing could not be started");
+            knowledgeDocMapper.updateById(doc);
+        }
 
         return doc;
+    }
+
+    @Override
+    public void retryProcessing(Long docId) {
+        KnowledgeDoc doc = knowledgeDocMapper.selectById(docId);
+        if (doc == null) {
+            throw new IllegalArgumentException("Document not found");
+        }
+        if ("DELETED".equals(doc.getStatus())) {
+            throw new IllegalArgumentException("Deleted documents cannot be processed");
+        }
+        if (!"FAILED".equals(doc.getStatus())) {
+            return;
+        }
+
+        int changed = knowledgeDocMapper.update(null, new LambdaUpdateWrapper<KnowledgeDoc>()
+                .eq(KnowledgeDoc::getId, docId)
+                .eq(KnowledgeDoc::getStatus, "FAILED")
+                .set(KnowledgeDoc::getStatus, "PENDING")
+                .set(KnowledgeDoc::getErrorMessage, null));
+        if (changed == 0) {
+            return;
+        }
+        documentProcessingRepository.prepareRetry(docId);
+        try {
+            documentQueuePublisher.publish(docId, doc.getFilePath(), 1);
+        } catch (RuntimeException e) {
+            knowledgeDocMapper.update(null, new LambdaUpdateWrapper<KnowledgeDoc>()
+                    .eq(KnowledgeDoc::getId, docId)
+                    .eq(KnowledgeDoc::getStatus, "PENDING")
+                    .set(KnowledgeDoc::getStatus, "FAILED")
+                    .set(KnowledgeDoc::getErrorMessage, "Unable to publish retry message"));
+            throw e;
+        }
     }
 
     private void uploadToQiniu(String objectName, InputStream inputStream) {

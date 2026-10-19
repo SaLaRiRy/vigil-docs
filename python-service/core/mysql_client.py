@@ -176,6 +176,111 @@ class MySQLClient:
                 self.connection.rollback()
             return 0
 
+    def get_document(self, doc_id: int) -> Dict[str, Any]:
+        return self.fetch_one(
+            "SELECT id, doc_name, file_path, status, error_message FROM knowledge_doc WHERE id = %s",
+            (doc_id,),
+        )
+
+    def increment_processing_attempt(self, doc_id: int) -> int:
+        self.execute(
+            """
+            INSERT INTO document_processing (doc_id, attempts, last_error, dead_lettered)
+            VALUES (%s, 1, NULL, 0)
+            ON DUPLICATE KEY UPDATE attempts = attempts + 1, dead_lettered = 0
+            """,
+            (doc_id,),
+        )
+        row = self.fetch_one("SELECT attempts FROM document_processing WHERE doc_id = %s", (doc_id,))
+        return int(row["attempts"]) if row else 1
+
+    def mark_processing(self, doc_id: int) -> None:
+        self.execute(
+            "UPDATE knowledge_doc SET status = 'PROCESSING', error_message = NULL WHERE id = %s AND status <> 'DELETED'",
+            (doc_id,),
+        )
+
+    def complete_document(self, doc_id: int, chunks: List[Dict[str, Any]]) -> int:
+        if not self.connection or not self.connection.is_connected():
+            self.connect()
+        cursor = self.connection.cursor()
+        try:
+            self.connection.start_transaction()
+            cursor.execute("DELETE FROM knowledge_chunk WHERE doc_id = %s", (doc_id,))
+            data = [
+                (doc_id, chunk.get("chunk_index", i), chunk.get("page_content", ""))
+                for i, chunk in enumerate(chunks)
+            ]
+            if data:
+                cursor.executemany(
+                    """
+                    INSERT INTO knowledge_chunk (doc_id, chunk_index, chunk_text, create_time)
+                    VALUES (%s, %s, %s, NOW())
+                    """,
+                    data,
+                )
+            cursor.execute(
+                """
+                UPDATE knowledge_doc
+                SET status = 'COMPLETED', error_message = NULL
+                WHERE id = %s AND status <> 'DELETED'
+                """,
+                (doc_id,),
+            )
+            cursor.execute(
+                """
+                UPDATE document_processing
+                SET last_error = NULL, dead_lettered = 0
+                WHERE doc_id = %s
+                """,
+                (doc_id,),
+            )
+            self.connection.commit()
+            return cursor.rowcount
+        except Exception:
+            self.connection.rollback()
+            raise
+        finally:
+            cursor.close()
+
+    def mark_failed(self, doc_id: int, safe_error: str, dead_lettered: bool) -> None:
+        safe_error = (safe_error or "Document processing failed")[:500]
+        self.execute(
+            """
+            UPDATE knowledge_doc
+            SET status = 'FAILED', error_message = %s
+            WHERE id = %s AND status <> 'DELETED'
+            """,
+            (safe_error, doc_id),
+        )
+        self.execute(
+            """
+            UPDATE document_processing
+            SET last_error = %s, dead_lettered = %s
+            WHERE doc_id = %s
+            """,
+            (safe_error, 1 if dead_lettered else 0, doc_id),
+        )
+
+    def mark_retry_pending(self, doc_id: int, safe_error: str) -> None:
+        safe_error = (safe_error or "Document processing will be retried")[:500]
+        self.execute(
+            """
+            UPDATE knowledge_doc
+            SET status = 'PENDING', error_message = NULL
+            WHERE id = %s AND status <> 'DELETED'
+            """,
+            (doc_id,),
+        )
+        self.execute(
+            """
+            UPDATE document_processing
+            SET last_error = %s, dead_lettered = 0
+            WHERE doc_id = %s
+            """,
+            (safe_error, doc_id),
+        )
+
 # 创建全局实例
 mysql_client = MySQLClient()
 

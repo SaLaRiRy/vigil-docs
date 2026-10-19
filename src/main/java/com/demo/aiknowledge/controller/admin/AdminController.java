@@ -66,8 +66,7 @@ public class AdminController {
     public Result<Void> deleteDoc(@PathVariable Long id) {
         // 需要同时删除向量库中的数据 (这里暂时只删除了数据库记录和文件)
         // 完善建议：Python端增加删除向量接口
-        knowledgeService.deleteDoc(id);
-        return Result.success(null);
+        return Result.error(403, "Deletion requires an approved workflow");
     }
 
     @GetMapping("/knowledge/list")
@@ -78,8 +77,7 @@ public class AdminController {
     @PostMapping("/knowledge/retry-parse")
     public Result<Void> retryParse(@RequestBody Map<String, Object> request) {
         Long id = Long.parseLong(request.get("id").toString());
-        String filePath = (String) request.get("filePath");
-        aiService.parseDocument(filePath, id);
+        knowledgeService.retryProcessing(id);
         return Result.success(null);
     }
     

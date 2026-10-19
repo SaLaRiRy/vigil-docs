@@ -1,16 +1,40 @@
-import { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useCallback, useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { knowledgeAPI } from '../api/index';
 import './Knowledge.css';
 
+const terminalStatuses = new Set(['COMPLETED', 'FAILED', 'DELETED']);
+
+const statusLabels = {
+  PENDING: { text: '排队中', className: 'pending' },
+  PROCESSING: { text: '处理中', className: 'pending' },
+  COMPLETED: { text: '已完成', className: 'completed' },
+  FAILED: { text: '失败', className: 'failed' },
+  WAITING_APPROVAL: { text: '等待审批', className: 'pending' },
+  DELETED: { text: '已删除', className: 'failed' }
+};
+
 export default function Knowledge() {
   const navigate = useNavigate();
-  const location = useLocation();
   const userId = localStorage.getItem('userId');
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [selectedFile, setSelectedFile] = useState(null);
+  const [message, setMessage] = useState('');
+
+  const loadDocuments = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
+    try {
+      const response = await knowledgeAPI.list();
+      setDocuments(response.data || []);
+    } catch (error) {
+      console.error('Failed to load documents', error);
+      if (!silent) setMessage(error.message || '加载文档失败');
+    } finally {
+      if (!silent) setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     if (!userId) {
@@ -18,82 +42,46 @@ export default function Knowledge() {
       return;
     }
     loadDocuments();
-  }, [userId, navigate]);
+  }, [userId, navigate, loadDocuments]);
 
   useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    const docId = params.get('docId');
-    if (docId && userId) {
-      viewDocument(docId);
-    }
-  }, [location, userId]);
-
-  const viewDocument = async (id) => {
-    try {
-      const res = await knowledgeAPI.view(id, userId);
-      // Here we could open a modal or redirect to a viewer
-      // For now, just show a message that we recorded the view
-      // and maybe highlight the document if it's in the list
-      console.log('Viewed doc:', res.data);
-    } catch (e) {
-      console.error('View doc failed', e);
-    }
-  };
-
-  const loadDocuments = async () => {
-    setLoading(true);
-    try {
-      const response = await knowledgeAPI.list();
-      setDocuments(response.data || []);
-    } catch (err) {
-      console.error('加载文档失败:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleFileSelect = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      setSelectedFile(file);
-    }
-  };
+    const hasActiveDocument = documents.some(document => !terminalStatuses.has(document.status));
+    if (!hasActiveDocument) return undefined;
+    const timer = window.setInterval(() => loadDocuments(true), 2000);
+    return () => window.clearInterval(timer);
+  }, [documents, loadDocuments]);
 
   const handleUpload = async () => {
     if (!selectedFile) return;
-
     setUploading(true);
+    setMessage('');
     try {
       await knowledgeAPI.upload(selectedFile);
       setSelectedFile(null);
-      document.getElementById('file-input').value = '';
-      loadDocuments();
-      alert('上传成功');
-    } catch (err) {
-      alert(err.message || '上传失败');
+      const input = document.getElementById('file-input');
+      if (input) input.value = '';
+      await loadDocuments(true);
+    } catch (error) {
+      setMessage(error.message || '上传失败');
     } finally {
       setUploading(false);
     }
   };
 
-  const handleDelete = async (id) => {
-    if (!confirm('确定删除此文档吗？')) return;
-
+  const handleDeletionRequest = async document => {
+    const confirmed = window.confirm(`Request approval to delete “${document.docName}”?`);
+    if (!confirmed) return;
     try {
-      await knowledgeAPI.delete(id);
-      setDocuments(documents.filter(doc => doc.id !== id));
-    } catch (err) {
-      alert(err.message || '删除失败');
+      const response = await knowledgeAPI.requestDeletion(document.id);
+      setMessage(response.data?.message || '删除请求已提交，等待管理员审批');
+      await loadDocuments(true);
+    } catch (error) {
+      setMessage(error.message || '删除请求失败');
     }
   };
 
-  const getStatusBadge = (status) => {
-    const statusMap = {
-      'PENDING': { text: '处理中', className: 'pending' },
-      'COMPLETED': { text: '已完成', className: 'completed' },
-      'FAILED': { text: '失败', className: 'failed' }
-    };
-    const info = statusMap[status] || { text: status, className: '' };
+  const statusBadge = status => {
+    const info = statusLabels[status] || { text: status, className: '' };
     return <span className={`status-badge ${info.className}`}>{info.text}</span>;
   };
 
@@ -106,14 +94,13 @@ export default function Knowledge() {
         </button>
       </div>
 
-      {/* Upload section */}
       <div className="upload-section card">
         <h3>上传文档</h3>
         <div className="upload-area">
           <input
             id="file-input"
             type="file"
-            onChange={handleFileSelect}
+            onChange={event => setSelectedFile(event.target.files[0] || null)}
             accept=".txt,.pdf,.doc,.docx,.md"
           />
           <button
@@ -125,12 +112,11 @@ export default function Knowledge() {
           </button>
         </div>
         <p className="upload-hint">支持 .txt, .pdf, .doc, .docx, .md 格式</p>
+        {message && <p className="upload-hint">{message}</p>}
       </div>
 
-      {/* Document list */}
       <div className="document-section card">
         <h3>文档列表</h3>
-
         {loading ? (
           <div className="loading">加载中...</div>
         ) : documents.length === 0 ? (
@@ -146,17 +132,23 @@ export default function Knowledge() {
               </tr>
             </thead>
             <tbody>
-              {documents.map(doc => (
-                <tr key={doc.id}>
-                  <td className="doc-name">{doc.docName}</td>
-                  <td>{getStatusBadge(doc.status)}</td>
-                  <td>{new Date(doc.createTime).toLocaleString()}</td>
+              {documents.map(document => (
+                <tr key={document.id}>
+                  <td className="doc-name">
+                    {document.docName}
+                    {document.status === 'FAILED' && document.errorMessage && (
+                      <div className="document-error">{document.errorMessage}</div>
+                    )}
+                  </td>
+                  <td>{statusBadge(document.status)}</td>
+                  <td>{new Date(document.createTime).toLocaleString()}</td>
                   <td>
                     <button
                       className="btn btn-danger btn-sm"
-                      onClick={() => handleDelete(doc.id)}
+                      disabled={['WAITING_APPROVAL', 'DELETED'].includes(document.status)}
+                      onClick={() => handleDeletionRequest(document)}
                     >
-                      删除
+                      请求删除
                     </button>
                   </td>
                 </tr>

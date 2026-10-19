@@ -213,6 +213,8 @@ export const knowledgeAPI = {
   list: (categoryId) =>
     api.get(`/knowledge/list${categoryId ? `?categoryId=${categoryId}` : ''}`),
   delete: (id) => api.delete(`/knowledge/${id}`),
+  requestDeletion: (id, instruction = 'Delete the explicitly selected document') =>
+    api.post(`/knowledge/${id}/deletion-request`, { instruction }),
   view: (id, userId) => api.get(`/knowledge/view/${id}?userId=${userId}`),
 };
 

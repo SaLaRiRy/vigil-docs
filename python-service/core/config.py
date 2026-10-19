@@ -31,6 +31,16 @@ class ConfigManager:
         self.REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", "")
         self.REDIS_DB = int(os.getenv("REDIS_DB", "0"))
 
+        # RabbitMQ Configuration
+        self.RABBITMQ_HOST = os.getenv("RABBITMQ_HOST", "localhost")
+        self.RABBITMQ_PORT = int(os.getenv("RABBITMQ_PORT", "5672"))
+        self.RABBITMQ_USERNAME = os.getenv("RABBITMQ_USERNAME", "guest")
+        self.RABBITMQ_PASSWORD = os.getenv("RABBITMQ_PASSWORD", "guest")
+        self.DOCUMENT_QUEUE = os.getenv("DOCUMENT_QUEUE", "agentcraft.document.process.v1")
+        self.DOCUMENT_RETRY_QUEUE = os.getenv("DOCUMENT_RETRY_QUEUE", "agentcraft.document.retry.v1")
+        self.DOCUMENT_DLQ = os.getenv("DOCUMENT_DLQ", "agentcraft.document.dlq.v1")
+        self.APPROVAL_DECISION_QUEUE = os.getenv("APPROVAL_DECISION_QUEUE", "agentcraft.approval.decision.v1")
+
         # MySQL Configuration
         self.DB_HOST = os.getenv("MYSQL_HOST", "localhost")
         self.DB_PORT = int(os.getenv("MYSQL_PORT", "3306"))
@@ -105,6 +115,8 @@ class ConfigManager:
             "LOG_LEVEL": self.LOG_LEVEL,
             "API_HOST": self.API_HOST,
             "API_PORT": self.API_PORT,
+            "RABBITMQ_HOST": self.RABBITMQ_HOST,
+            "RABBITMQ_PORT": self.RABBITMQ_PORT,
             "CORS_ORIGINS": self.CORS_ORIGINS
         }
     
