@@ -43,7 +43,7 @@ class ApprovalDecisionHandler:
                     "approval_id": message["approvalId"],
                     "run_id": message["runId"],
                 },
-                approval_validator=self.executor.validate_and_claim,
+                approval_validator=self.executor.validate_ticket,
             )
         except ApprovalExecutionError as exc:
             self.executor.audit(

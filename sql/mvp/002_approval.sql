@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS agent_approval (
     status VARCHAR(20) NOT NULL,
     publication_status VARCHAR(20) NOT NULL DEFAULT 'NOT_REQUIRED',
     execution_status VARCHAR(20) NOT NULL DEFAULT 'NOT_STARTED',
+    execution_updated_at DATETIME NULL,
     cleanup_status VARCHAR(20) NOT NULL DEFAULT 'NOT_STARTED',
     created_at DATETIME NOT NULL,
     expires_at DATETIME NOT NULL,
@@ -35,4 +36,3 @@ CREATE TABLE IF NOT EXISTS agent_audit_event (
     KEY idx_audit_run (run_id, created_at),
     KEY idx_audit_trace (trace_id, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-

@@ -72,6 +72,14 @@ if (-not $consumerRunning) {
         -RedirectStandardError (Join-Path $runtime 'python-consumer.err.log') `
         -WindowStyle Hidden | Out-Null
 }
+Wait-Ready 'Python document consumer' {
+    try {
+        $queueStatus = rabbitmqctl list_queues name consumers | Out-String
+        return $queueStatus -match 'agentcraft\.document\.process\.v1\s+1'
+    } catch {
+        return $false
+    }
+}
 
 if (-not (Test-Port 8080)) {
     Start-Process -FilePath $maven `

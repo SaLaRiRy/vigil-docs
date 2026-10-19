@@ -7,15 +7,16 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import java.io.IOException;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 
 @Service
 public class ApprovalNotificationService {
 
     private final Map<Long, SseEmitter> emitters = new ConcurrentHashMap<>();
-    private long nextId = 1;
+    private final AtomicLong nextId = new AtomicLong(1);
 
     public SseEmitter subscribe() {
-        long emitterId = nextId++;
+        long emitterId = nextId.getAndIncrement();
         SseEmitter emitter = new SseEmitter(30 * 60 * 1000L);
         emitters.put(emitterId, emitter);
         Runnable cleanup = () -> emitters.remove(emitterId);

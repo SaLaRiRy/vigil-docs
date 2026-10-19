@@ -7,12 +7,16 @@ class ApprovalExecutionError(RuntimeError):
     pass
 
 
+class ApprovalInProgressError(ApprovalExecutionError):
+    pass
+
+
 class ApprovalExecutionService:
     def __init__(self, mysql, vector_store):
         self.mysql = mysql
         self.vector_store = vector_store
 
-    def validate_and_claim(
+    def validate_ticket(
         self,
         approval_id: str,
         run_id: str,
@@ -30,17 +34,38 @@ class ApprovalExecutionService:
             raise ApprovalExecutionError("Approval ticket is not bound to this run and document")
         if approval["status"] != "APPROVED":
             raise ApprovalExecutionError("Approval ticket is not approved")
+        return approval
+
+    def validate_and_claim(
+        self,
+        approval_id: str,
+        run_id: str,
+        document_id: int,
+        tool_name: str = "delete_document",
+    ) -> Dict[str, Any]:
+        approval = self.validate_ticket(approval_id, run_id, document_id, tool_name)
         if approval["execution_status"] == "COMPLETED":
             return approval
         if approval["execution_status"] == "EXECUTING":
-            # A redelivery or a process restart may resume an already claimed
-            # ticket. Soft deletion and cleanup remain idempotent.
-            return approval
+            reclaimed = self.mysql.execute(
+                """
+                UPDATE agent_approval
+                SET execution_updated_at = NOW()
+                WHERE id = %s AND run_id = %s AND document_id = %s
+                  AND tool_name = %s AND status = 'APPROVED'
+                  AND execution_status = 'EXECUTING'
+                  AND (execution_updated_at IS NULL OR execution_updated_at < DATE_SUB(NOW(), INTERVAL 5 MINUTE))
+                """,
+                (approval_id, run_id, document_id, tool_name),
+            )
+            if reclaimed == 1:
+                return approval
+            raise ApprovalInProgressError("Approval execution is already in progress")
 
         claimed = self.mysql.execute(
             """
             UPDATE agent_approval
-            SET execution_status = 'EXECUTING'
+            SET execution_status = 'EXECUTING', execution_updated_at = NOW()
             WHERE id = %s AND run_id = %s AND document_id = %s
               AND tool_name = %s AND status = 'APPROVED'
               AND execution_status IN ('NOT_STARTED', 'EXECUTING')
@@ -150,7 +175,7 @@ class ApprovalExecutionService:
 
     def _complete(self, approval_id: str, run_id: str) -> None:
         self.mysql.execute(
-            "UPDATE agent_approval SET execution_status = 'COMPLETED' WHERE id = %s",
+            "UPDATE agent_approval SET execution_status = 'COMPLETED', execution_updated_at = NOW() WHERE id = %s",
             (approval_id,),
         )
 

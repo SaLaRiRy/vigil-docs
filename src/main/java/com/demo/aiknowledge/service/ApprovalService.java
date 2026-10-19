@@ -49,8 +49,8 @@ public class ApprovalService {
         if (document == null) {
             throw new IllegalArgumentException("Document not found");
         }
-        if ("DELETED".equals(document.getStatus())) {
-            throw new IllegalStateException("Document is already deleted");
+        if ("DELETED".equals(document.getStatus()) || "WAITING_APPROVAL".equals(document.getStatus())) {
+            throw new IllegalStateException("Document already has a terminal or pending deletion state");
         }
 
         String runId = UUID.randomUUID().toString();
@@ -113,7 +113,16 @@ public class ApprovalService {
                 "documentId", documentId,
                 "tool", TOOL_NAME
         ));
-        notificationService.notifyPending(approval);
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    notificationService.notifyPending(approval);
+                }
+            });
+        } else {
+            notificationService.notifyPending(approval);
+        }
         return DeletionRequestResult.builder()
                 .approvalId(approvalId)
                 .runId(runId)

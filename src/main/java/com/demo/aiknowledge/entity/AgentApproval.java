@@ -23,6 +23,7 @@ public class AgentApproval {
     private String status;
     private String publicationStatus;
     private String executionStatus;
+    private LocalDateTime executionUpdatedAt;
     private String cleanupStatus;
     private LocalDateTime createdAt;
     private LocalDateTime expiresAt;

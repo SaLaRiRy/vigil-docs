@@ -38,6 +38,7 @@ class FakeMySQL:
 
     def mark_processing(self, doc_id):
         self.document["status"] = "PROCESSING"
+        return 1
 
     def complete_document(self, doc_id, chunks):
         self.completed_chunks = chunks

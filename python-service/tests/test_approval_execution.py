@@ -3,7 +3,11 @@ import json
 import pytest
 
 from core.approval_consumer import ApprovalDecisionHandler
-from core.approval_execution import ApprovalExecutionError, ApprovalExecutionService
+from core.approval_execution import (
+    ApprovalExecutionError,
+    ApprovalExecutionService,
+    ApprovalInProgressError,
+)
 
 
 class FakeMySQL:
@@ -37,6 +41,8 @@ class FakeMySQL:
 
     def execute(self, sql, params=None):
         self.calls.append((sql, params))
+        if "execution_updated_at <" in sql:
+            return 0
         if sql.strip().startswith("UPDATE agent_approval") and "execution_status = 'EXECUTING'" in sql:
             return 1
         if sql.strip().startswith("UPDATE knowledge_doc"):
@@ -113,6 +119,16 @@ def test_completed_approval_replay_is_a_no_op():
 
     assert result["status"] == "already_completed"
     assert not any("knowledge_doc" in sql for sql, _ in mysql.calls)
+
+
+def test_concurrent_execution_of_a_fresh_claim_is_rejected():
+    service = ApprovalExecutionService(
+        FakeMySQL(approval(execution_status="EXECUTING")),
+        FakeVectorStore(),
+    )
+
+    with pytest.raises(ApprovalInProgressError):
+        service.execute(decision())
 
 
 def test_already_deleted_document_is_a_safe_no_op():

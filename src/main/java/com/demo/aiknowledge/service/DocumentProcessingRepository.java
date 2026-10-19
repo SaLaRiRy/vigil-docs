@@ -13,7 +13,7 @@ public class DocumentProcessingRepository {
     public void initialize(Long documentId) {
         jdbcTemplate.update("""
                 INSERT INTO document_processing (doc_id, attempts, dead_lettered)
-                VALUES (?, 1, 0)
+                VALUES (?, 0, 0)
                 ON DUPLICATE KEY UPDATE attempts = 0, dead_lettered = 0, last_error = NULL
                 """, documentId);
     }

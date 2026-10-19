@@ -38,6 +38,7 @@ public class MvpSchemaInitializer implements ApplicationRunner {
                     status VARCHAR(20) NOT NULL,
                     publication_status VARCHAR(20) NOT NULL DEFAULT 'NOT_REQUIRED',
                     execution_status VARCHAR(20) NOT NULL DEFAULT 'NOT_STARTED',
+                    execution_updated_at DATETIME NULL,
                     cleanup_status VARCHAR(20) NOT NULL DEFAULT 'NOT_STARTED',
                     created_at DATETIME NOT NULL,
                     expires_at DATETIME NOT NULL,
@@ -49,6 +50,18 @@ public class MvpSchemaInitializer implements ApplicationRunner {
                     KEY idx_approval_publication (status, publication_status)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
                 """);
+        Integer executionUpdatedColumn = jdbcTemplate.queryForObject(
+                """
+                SELECT COUNT(*) FROM information_schema.COLUMNS
+                WHERE TABLE_SCHEMA = DATABASE()
+                  AND TABLE_NAME = 'agent_approval'
+                  AND COLUMN_NAME = 'execution_updated_at'
+                """,
+                Integer.class);
+        if (executionUpdatedColumn != null && executionUpdatedColumn == 0) {
+            jdbcTemplate.execute(
+                    "ALTER TABLE agent_approval ADD COLUMN execution_updated_at DATETIME NULL");
+        }
         jdbcTemplate.execute("""
                 CREATE TABLE IF NOT EXISTS agent_audit_event (
                     id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,

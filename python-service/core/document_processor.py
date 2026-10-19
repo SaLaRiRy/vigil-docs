@@ -27,7 +27,8 @@ class DocumentProcessor:
             return "already_deleted"
 
         attempt = self.mysql.increment_processing_attempt(document_id)
-        self.mysql.mark_processing(document_id)
+        if self.mysql.mark_processing(document_id) != 1:
+            return "state_changed"
         try:
             chunks = self.parser.parse(message["storagePath"])
             for index, chunk in enumerate(chunks):

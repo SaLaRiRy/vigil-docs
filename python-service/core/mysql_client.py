@@ -194,9 +194,13 @@ class MySQLClient:
         row = self.fetch_one("SELECT attempts FROM document_processing WHERE doc_id = %s", (doc_id,))
         return int(row["attempts"]) if row else 1
 
-    def mark_processing(self, doc_id: int) -> None:
-        self.execute(
-            "UPDATE knowledge_doc SET status = 'PROCESSING', error_message = NULL WHERE id = %s AND status <> 'DELETED'",
+    def mark_processing(self, doc_id: int) -> int:
+        return self.execute(
+            """
+            UPDATE knowledge_doc
+            SET status = 'PROCESSING', error_message = NULL
+            WHERE id = %s AND status IN ('PENDING', 'PROCESSING', 'COMPLETED', 'FAILED')
+            """,
             (doc_id,),
         )
 
@@ -206,6 +210,14 @@ class MySQLClient:
         cursor = self.connection.cursor()
         try:
             self.connection.start_transaction()
+            cursor.execute(
+                "SELECT status FROM knowledge_doc WHERE id = %s FOR UPDATE",
+                (doc_id,),
+            )
+            row = cursor.fetchone()
+            if not row or row[0] in ("DELETED", "WAITING_APPROVAL"):
+                self.connection.rollback()
+                return 0
             cursor.execute("DELETE FROM knowledge_chunk WHERE doc_id = %s", (doc_id,))
             data = [
                 (doc_id, chunk.get("chunk_index", i), chunk.get("page_content", ""))
@@ -223,7 +235,7 @@ class MySQLClient:
                 """
                 UPDATE knowledge_doc
                 SET status = 'COMPLETED', error_message = NULL
-                WHERE id = %s AND status <> 'DELETED'
+                WHERE id = %s AND status IN ('PENDING', 'PROCESSING', 'COMPLETED', 'FAILED')
                 """,
                 (doc_id,),
             )
