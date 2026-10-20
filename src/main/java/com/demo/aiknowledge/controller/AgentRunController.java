@@ -6,8 +6,10 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.demo.aiknowledge.common.Result;
 import com.demo.aiknowledge.entity.AgentRun;
 import com.demo.aiknowledge.entity.AgentStep;
+import com.demo.aiknowledge.entity.ToolCall;
 import com.demo.aiknowledge.mapper.AgentRunMapper;
 import com.demo.aiknowledge.mapper.AgentStepMapper;
+import com.demo.aiknowledge.service.ToolCallService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
@@ -23,6 +25,7 @@ public class AgentRunController {
 
     private final AgentRunMapper agentRunMapper;
     private final AgentStepMapper agentStepMapper;
+    private final ToolCallService toolCallService;
 
     @GetMapping("/list")
     public Result<IPage<AgentRun>> list(
@@ -74,8 +77,8 @@ public class AgentRunController {
     }
 
     @GetMapping("/{runId}/tool-calls")
-    public Result<List<?>> getToolCalls(@PathVariable String runId) {
-        return Result.success(List.of());
+    public Result<List<ToolCall>> getToolCalls(@PathVariable String runId) {
+        return Result.success(toolCallService.getToolCallsByRunId(runId));
     }
 
     @DeleteMapping("/{runId}")

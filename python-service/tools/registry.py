@@ -38,7 +38,14 @@ class ToolRegistry:
         """检查工具是否存在"""
         return name in self._tools
     
-    def invoke_tool(self, tool_name: str, parameters: Dict[str, Any], run_id: Optional[str] = None) -> Dict[str, Any]:
+    def invoke_tool(
+        self,
+        tool_name: str,
+        parameters: Dict[str, Any],
+        run_id: Optional[str] = None,
+        execution_context: Optional[Dict[str, Any]] = None,
+        approval_validator=None,
+    ) -> Dict[str, Any]:
         """调用工具"""
         tool = self.get_tool(tool_name)
         if not tool:
@@ -47,6 +54,19 @@ class ToolRegistry:
         # 验证输入参数
         if not tool.validate_input(parameters):
             raise ValueError(f"Invalid input parameters for tool: {tool_name}")
+
+        permission = (tool.metadata.permission or "").lower()
+        if permission in {"destructive", "high_risk"}:
+            if approval_validator is None:
+                raise PermissionError("No approval validator is configured for a destructive tool")
+            if not execution_context:
+                raise PermissionError("Destructive tools require an explicit approval context")
+            approval_validator(
+                execution_context.get("approval_id"),
+                execution_context.get("run_id"),
+                parameters.get("document_id") or parameters.get("documentId"),
+                tool_name,
+            )
         
         # 生成 run_id 如果没有提供
         if run_id is None:

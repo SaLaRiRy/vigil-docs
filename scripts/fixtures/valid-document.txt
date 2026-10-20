@@ -1,0 +1,4 @@
+AgentCraft durable document processing fixture.
+
+RabbitMQ carries document processing messages. MySQL remains the source of truth.
+Approved destructive actions require a durable human approval ticket.

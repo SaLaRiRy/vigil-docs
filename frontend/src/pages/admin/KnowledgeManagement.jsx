@@ -221,6 +221,8 @@ export default function KnowledgeManagement() {
                   <td>
                     <button
                       className="action-btn delete"
+                      disabled
+                      title="Deletion must be approved from the approval center"
                       onClick={() => handleDelete(doc.id)}
                     >
                       删除

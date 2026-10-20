@@ -61,6 +61,29 @@ class TestToolRegistry:
         registry2 = ToolRegistry()
         assert registry1 is registry2
 
+    def test_destructive_tool_requires_approval_context(self, tool_registry, mock_tool):
+        mock_tool.metadata.permission = "destructive"
+        tool_registry.register_tool(mock_tool)
+
+        with pytest.raises(PermissionError, match="approval validator"):
+            tool_registry.invoke_tool("mock_tool", {"query": "delete"})
+
+    def test_destructive_tool_rejects_a_mismatched_ticket(self, tool_registry, mock_tool):
+        mock_tool.metadata.permission = "destructive"
+        tool_registry.register_tool(mock_tool)
+
+        def reject_mismatch(approval_id, run_id, document_id, tool_name):
+            raise PermissionError("ticket is bound to another run or document")
+
+        with pytest.raises(PermissionError, match="another run"):
+            tool_registry.invoke_tool(
+                "mock_tool",
+                {"query": "delete"},
+                run_id="run-1",
+                execution_context={"approval_id": "approval-1", "run_id": "run-1"},
+                approval_validator=reject_mismatch,
+            )
+
 
 class TestToolBase:
     """测试 Tool 基类"""

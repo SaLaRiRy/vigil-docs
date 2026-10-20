@@ -24,7 +24,8 @@ export default function AdminDashboard() {
     setAdminInfo(JSON.parse(info));
 
     const path = location.pathname;
-    if (path.includes('/dashboard')) setActiveMenu('dashboard');
+    if (path.includes('/approvals')) setActiveMenu('approvals');
+    else if (path.includes('/dashboard')) setActiveMenu('dashboard');
     else if (path.includes('/users')) setActiveMenu('users');
     else if (path.includes('/knowledge')) setActiveMenu('knowledge');
     else if (path.includes('/logs')) setActiveMenu('logs');
@@ -41,6 +42,7 @@ export default function AdminDashboard() {
   };
 
   const menuItems = [
+    { id: 'approvals', label: '待审批操作', icon: '🛡️', path: '/admin/approvals' },
     { id: 'chat', label: '管理助手', icon: '⚙️', path: '/admin/chat' },
     { id: 'dashboard', label: '仪表盘', icon: '📊', path: '/admin/dashboard' },
     { id: 'users', label: '用户管理', icon: '👥', path: '/admin/users' },
