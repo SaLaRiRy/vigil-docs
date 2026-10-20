@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './Header.css';
 
@@ -18,17 +18,17 @@ const Header = () => {
   return (
     <header className="app-header">
       <div className="header-left">
-        <span className="app-title">AI 知识库系统</span>
+        <span className="app-title">VigilDocs</span>
       </div>
       <div className="header-right">
         <div className="user-profile-container">
-          <span 
-            className="user-info clickable" 
+          <span
+            className="user-info clickable"
             onClick={() => setShowUserInfo(!showUserInfo)}
           >
-            欢迎, {user.username}
+            欢迎，{user.username}
           </span>
-          
+
           {showUserInfo && (
             <div className="user-popup">
               <div className="popup-header">
@@ -48,7 +48,9 @@ const Header = () => {
                   <label>注册时间：</label>
                   <span>{user.createTime ? new Date(user.createTime).toLocaleString() : '未知'}</span>
                 </div>
-                <button onClick={handleLogout} className="logout-btn full-width">退出登录</button>
+                <button onClick={handleLogout} className="logout-btn full-width">
+                  退出登录
+                </button>
               </div>
             </div>
           )}

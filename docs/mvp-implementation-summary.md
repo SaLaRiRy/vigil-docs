@@ -1,4 +1,4 @@
-# AgentCraft 二次开发工作总结
+# VigilDocs 二次开发工作总结
 
 ## 1. 这次二开解决了什么
 
@@ -273,4 +273,4 @@ python-service\.venv\Scripts\python.exe .\scripts\demo_acceptance.py
 
 ## 11. 适合写入项目说明的一句话总结
 
-在原 RAG 问答项目上补齐了 RabbitMQ 持久化文档处理、三次有界重试与死信恢复，以及基于 MySQL 审批票据和 RabbitMQ 恢复的高风险文档删除链路；前端新增真实处理状态、管理员重试、SSE 审批中心和幂等审批操作，同时保留原有问答与 Agent 页面。
+VigilDocs 在上游 RAG 问答项目基础上补齐了 RabbitMQ 持久化文档处理、三次有界重试与死信恢复，以及基于 MySQL 审批票据和 RabbitMQ 恢复的高风险文档删除链路；前端新增真实处理状态、管理员重试、SSE 审批中心和幂等审批操作，同时保留原有问答与 Agent 页面。
