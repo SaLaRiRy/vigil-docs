@@ -37,9 +37,9 @@ export default function Chat() {
   const fileInputRef = useRef(null);
 
   useEffect(() => {
-    document.title = 'AI 知识系统-智能对话';
+    document.title = 'VigilDocs - 智能对话';
     return () => {
-      document.title = 'AI 知识系统';
+      document.title = 'VigilDocs';
     };
   }, []);
 
@@ -485,7 +485,7 @@ export default function Chat() {
       <div className="chat-sidebar">
         <div className="sidebar-header">
           <div className="sidebar-logo" onClick={() => navigate('/')}>
-            <h2>🤖 AI Knowledge</h2>
+            <h2>🛡️ VigilDocs</h2>
           </div>
           <button className="new-chat-btn" onClick={handleCreateConversation}>
             <span className="new-chat-icon">+</span> 开启新对话
@@ -698,7 +698,7 @@ export default function Chat() {
         ) : (
           <div className="welcome-screen">
             <div className="welcome-avatar">🤖</div>
-            <h1>欢迎使用 AI 知识系统</h1>
+            <h1>欢迎使用 VigilDocs</h1>
             <p>基于 RAG 技术，为您提供精准的企业知识问答服务</p>
             <button className="start-btn" onClick={handleCreateConversation}>
               开始新对话

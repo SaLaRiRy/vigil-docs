@@ -9,9 +9,9 @@ export default function AdminDashboard() {
   const [activeMenu, setActiveMenu] = useState('users');
 
   useEffect(() => {
-    document.title = 'AI 知识系统-管理后台';
+    document.title = 'VigilDocs - 管理后台';
     return () => {
-      document.title = 'AI 知识系统';
+      document.title = 'VigilDocs';
     };
   }, []);
 
@@ -61,7 +61,7 @@ export default function AdminDashboard() {
     <div className="admin-layout">
       <div className="admin-sidebar">
         <div className="sidebar-header">
-          <h2>🤖 AI知识管理系统</h2>
+          <h2>🛡️ VigilDocs</h2>
         </div>
 
         <nav className="sidebar-nav">

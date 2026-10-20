@@ -9,10 +9,10 @@
         <relativePath/> <!-- lookup parent from repository -->
     </parent>
     <groupId>com.demo</groupId>
-    <artifactId>ai-knowledge-system</artifactId>
+    <artifactId>vigil-docs</artifactId>
     <version>0.0.1-SNAPSHOT</version>
-    <name>ai-knowledge-system</name>
-    <description>AI Knowledge System Backend</description>
+    <name>VigilDocs</name>
+    <description>Durable RAG with guarded human-in-the-loop workflows</description>
     <properties>
         <java.version>17</java.version>
     </properties>

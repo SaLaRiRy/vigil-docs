@@ -103,4 +103,4 @@ if (-not $SkipFrontend) {
     Wait-Ready 'Frontend' { try { (Invoke-WebRequest -UseBasicParsing 'http://127.0.0.1:3000' -TimeoutSec 5).StatusCode -eq 200 } catch { $false } }
 }
 
-Write-Host 'Local AgentCraft stack is ready. Logs are in .runtime.'
+Write-Host 'Local VigilDocs stack is ready. Logs are in .runtime.'
