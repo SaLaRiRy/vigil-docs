@@ -13,7 +13,7 @@
 [![Redis](https://img.shields.io/badge/Redis-7.0-DC382D?logo=redis)](https://redis.io/)
 [![MySQL](https://img.shields.io/badge/MySQL-8.0-4479A1?logo=mysql)](https://mysql.com/)
 [![CI](https://github.com/your-username/ai-knowledge-system/actions/workflows/ci.yml/badge.svg)](https://github.com/your-username/ai-knowledge-system/actions/workflows/ci.yml)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
 </div>
 
@@ -428,7 +428,9 @@ npm run dev
 
 ## 📄 开源协议
 
-[MIT License](LICENSE) — 可自由用于学习、毕设、简历项目。
+本项目基于 [EvanYao826/AgentCraft](https://github.com/EvanYao826/AgentCraft) 二次开发，
+上游代码与本项目继续采用 [Apache License 2.0](LICENSE)，原始许可和署名声明予以保留。
+修改部分的版权归 SaLaRiRy 所有，详细声明见 [NOTICE](NOTICE)。
 
 详细学习说明文档请查看 [AgentCraft 学习指南](AgentCraft学习指南.md)。
 
