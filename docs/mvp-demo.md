@@ -1,5 +1,11 @@
 # Secure async processing and approval demo
 
+中文功能清单、原项目改动和范围边界见
+[二次开发工作总结](mvp-implementation-summary.md)。
+
+本次 MVP 使用本机 RabbitMQ/MySQL/Redis，不要求 Docker。下面的 Docker 说明若出现在
+项目旧 README 中，仅属于原项目启动方式，不是本功能链路的验收前置条件。
+
 ## Start the local stack
 
 ```powershell
@@ -27,3 +33,11 @@ The flow creates a local fixture user and exercises:
 
 The approval center is available at `/admin/approvals` after administrator login. It reloads
 authoritative state from MySQL and refreshes on SSE notifications.
+
+用户可见入口：
+
+- 用户知识库：`http://127.0.0.1:3000/knowledge`
+- 管理员审批中心：`http://127.0.0.1:3000/admin/approvals`
+
+原项目的普通问答、聊天、仪表盘、用户管理、问答日志、Agent 执行记录、知识巡检和自动报表
+页面继续保留；本次新增逻辑只作用于文档处理与删除审批链路。
