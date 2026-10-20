@@ -13,6 +13,8 @@ Durable RAG document processing with guarded human-in-the-loop workflows.
 [![React](https://img.shields.io/badge/React-18.2-61dafb?logo=react)](https://reactjs.org/)
 [![RabbitMQ](https://img.shields.io/badge/RabbitMQ-4.x-FF6600?logo=rabbitmq)](https://www.rabbitmq.com/)
 [![MySQL](https://img.shields.io/badge/MySQL-8.0-4479A1?logo=mysql)](https://mysql.com/)
+[![Redis](https://img.shields.io/badge/Redis-7.0-DC382D?logo=redis)](https://redis.io/)
+[![Milvus](https://img.shields.io/badge/Milvus-2.4%2B-00B4D8)](https://milvus.io/)
 [![Apache-2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![CI](https://github.com/SaLaRiRy/vigil-docs/actions/workflows/ci.yml/badge.svg)](https://github.com/SaLaRiRy/vigil-docs/actions/workflows/ci.yml)
 
