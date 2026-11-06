@@ -85,6 +85,7 @@ schema_version
 embedding_provider
 embedding_model
 embedding_dimension
+score_metric
 built_at
 document_count
 chunk_count

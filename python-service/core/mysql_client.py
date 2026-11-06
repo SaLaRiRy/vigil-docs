@@ -110,7 +110,13 @@ class MySQLClient:
             logger.error(f"Error getting chunk count: {e}")
             return 0
 
-    def fetch_one(self, sql: str, params: tuple = None) -> Dict[str, Any]:
+    def fetch_one(
+        self,
+        sql: str,
+        params: tuple = None,
+        *,
+        raise_on_error: bool = False,
+    ) -> Dict[str, Any]:
         """执行查询并返回单行结果"""
         if not self.connection or not self.connection.is_connected():
             self.connect()
@@ -129,6 +135,8 @@ class MySQLClient:
         
         except Error as e:
             logger.error(f"Error fetching one: {e}")
+            if raise_on_error:
+                raise
             return None
 
     def fetch_all(

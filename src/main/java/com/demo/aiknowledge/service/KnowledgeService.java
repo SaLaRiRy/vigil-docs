@@ -15,6 +15,5 @@ public interface KnowledgeService {
     List<KnowledgeDoc> listDocs(Long categoryId);
     void deleteDoc(Long docId);
     void retryProcessing(Long docId);
-    int requeueStalePending();
     KnowledgeDoc viewDoc(Long docId, Long userId);
 }

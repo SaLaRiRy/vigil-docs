@@ -263,8 +263,16 @@ class VectorStoreManager:
             }
 
         actual_dimension = None
+        indexed_document_ids = []
         if self.vector_store is not None and hasattr(self.vector_store, "index"):
             actual_dimension = int(self.vector_store.index.d)
+            indexed_document_ids = sorted(
+                {
+                    document.metadata.get("doc_id")
+                    for document in self.vector_store.docstore._dict.values()
+                    if document.metadata.get("doc_id") is not None
+                }
+            )
         return {
             "status": self._health_status,
             "message": self._health_message,
@@ -278,6 +286,7 @@ class VectorStoreManager:
             if self.vector_store is not None and hasattr(self.vector_store, "index")
             else 0,
             "source_policy": self.manifest.source_policy if self.manifest else None,
+            "indexedDocumentIds": indexed_document_ids,
         }
 
     def add_documents(self, documents: List[Document]):

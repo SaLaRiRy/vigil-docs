@@ -15,7 +15,7 @@ os.environ.setdefault("VECTOR_STORE_DISABLE_GLOBAL_INIT", "1")
 from core.config import config
 from core.mysql_client import mysql_client
 from core.pending_recovery import recover_pending_document
-from core.vector_store import vector_store
+from core.vector_store import VectorStoreManager, create_embeddings
 
 
 class RabbitDocumentPublisher:
@@ -76,10 +76,18 @@ def build_parser():
 
 def main(argv=None):
     args = build_parser().parse_args(argv)
+    embeddings, provider, model = create_embeddings()
+    manager = VectorStoreManager(
+        use_milvus=False,
+        embeddings=embeddings,
+        reranker=None,
+        embedding_provider=provider,
+        embedding_model=model,
+    )
     report = recover_pending_document(
         mysql=mysql_client,
         publisher=RabbitDocumentPublisher(),
-        index_health=vector_store.get_health(),
+        index_health=manager.get_health(),
         document_id=args.doc_id,
         apply=args.apply,
     )

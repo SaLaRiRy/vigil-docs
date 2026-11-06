@@ -11,7 +11,7 @@ class FakeMySQL:
         self.row = row
         self.queries = []
 
-    def fetch_one(self, sql, params=None):
+    def fetch_one(self, sql, params=None, *, raise_on_error=False):
         self.queries.append((sql, params))
         return self.row
 

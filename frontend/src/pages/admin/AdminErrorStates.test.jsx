@@ -12,7 +12,6 @@ const getDashboardStats = vi.fn();
 const listUsers = vi.fn();
 const listDocuments = vi.fn();
 const getSystemHealth = vi.fn();
-const requeueStalePending = vi.fn();
 
 vi.mock('../../api/dashboard', () => ({
   getDashboardStats: (...args) => getDashboardStats(...args),
@@ -31,7 +30,6 @@ vi.mock('../../api/admin', () => ({
   },
   systemHealthAPI: {
     get: (...args) => getSystemHealth(...args),
-    requeueStalePending: (...args) => requeueStalePending(...args),
   },
 }));
 
@@ -46,7 +44,6 @@ describe('admin request states', () => {
     listUsers.mockReset();
     listDocuments.mockReset();
     getSystemHealth.mockReset();
-    requeueStalePending.mockReset();
   });
 
   it('shows a retryable dashboard error instead of an empty dashboard', async () => {
@@ -124,61 +121,6 @@ describe('admin request states', () => {
     expect(screen.getByRole('button', { name: '刷新状态' })).toBeInTheDocument();
   });
 
-  it('shows document work counts and requeues stale documents explicitly', async () => {
-    localStorage.setItem('adminInfo', JSON.stringify({ username: 'admin', role: 'ADMIN' }));
-    getSystemHealth
-      .mockResolvedValueOnce({
-        data: {
-          vectorIndex: { status: 'HEALTHY', message: '向量索引可检索' },
-          documentConsumer: {
-            status: 'DEGRADED',
-            queueDepth: 1,
-            consumerCount: 0,
-            pendingCount: 1,
-            processingCount: 0,
-            stalePendingCount: 1,
-            maxProcessingAttempts: 0,
-            message: '有排队消息但 consumer 未运行',
-          },
-        },
-      })
-      .mockResolvedValueOnce({
-        data: {
-          vectorIndex: { status: 'HEALTHY', message: '向量索引可检索' },
-          documentConsumer: {
-            status: 'HEALTHY',
-            queueDepth: 0,
-            consumerCount: 1,
-            pendingCount: 0,
-            processingCount: 0,
-            stalePendingCount: 0,
-            maxProcessingAttempts: 0,
-            message: 'consumer 正在运行',
-          },
-        },
-      });
-    requeueStalePending.mockResolvedValue({ data: 1 });
-
-    render(
-      <MemoryRouter initialEntries={['/admin/dashboard']}>
-        <Routes>
-          <Route path="/admin" element={<AdminDashboard />}>
-            <Route path="dashboard" element={<div>dashboard content</div>} />
-          </Route>
-        </Routes>
-      </MemoryRouter>,
-    );
-
-    expect(await screen.findByText(/PENDING 1/)).toBeInTheDocument();
-    expect(screen.getByText(/最大尝试 0/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '重投滞留文档' }));
-
-    await waitFor(() => {
-      expect(requeueStalePending).toHaveBeenCalledTimes(1);
-      expect(screen.getByText(/Consumer 1/)).toBeInTheDocument();
-    });
-  });
-
   it('polls while a visible document is pending and stops at a terminal state', async () => {
     vi.useFakeTimers();
     listDocuments
@@ -211,35 +153,4 @@ describe('admin request states', () => {
     vi.useRealTimers();
   });
 
-  it('offers explicit recovery when stale pending work is reported', async () => {
-    localStorage.setItem('adminInfo', JSON.stringify({ username: 'admin', role: 'ADMIN' }));
-    getSystemHealth.mockResolvedValue({
-      data: {
-        vectorIndex: { status: 'HEALTHY' },
-        documentConsumer: {
-          status: 'HEALTHY',
-          queueDepth: 0,
-          consumerCount: 1,
-          stalePendingCount: 2,
-        },
-      },
-    });
-    requeueStalePending.mockResolvedValue({ data: 2 });
-
-    render(
-      <MemoryRouter initialEntries={['/admin/dashboard']}>
-        <Routes>
-          <Route path="/admin" element={<AdminDashboard />}>
-            <Route path="dashboard" element={<div>dashboard content</div>} />
-          </Route>
-        </Routes>
-      </MemoryRouter>,
-    );
-
-    fireEvent.click(await screen.findByRole('button', { name: '重投滞留文档' }));
-
-    await waitFor(() => {
-      expect(requeueStalePending).toHaveBeenCalledTimes(1);
-    });
-  });
 });

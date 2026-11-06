@@ -32,6 +32,7 @@ def recover_pending_document(
         WHERE d.id = %s
         """,
         (document_id,),
+        raise_on_error=True,
     )
     if not row:
         raise PendingRecoveryError(f"文档 {document_id} 不存在")

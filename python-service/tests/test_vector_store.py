@@ -179,6 +179,8 @@ def test_manifest_and_cosine_index_survive_reload(tmp_path):
     )
 
     assert reloaded.get_health()["status"] == "HEALTHY"
+    assert reloaded.get_health()["document_count"] == 1
+    assert reloaded.get_health()["indexedDocumentIds"] == [42]
     assert reloaded.search(
         "事务 ACID 是什么", similarity_threshold=0.7, use_rerank=False
     )[0].metadata["doc_id"] == 42

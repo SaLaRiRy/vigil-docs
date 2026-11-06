@@ -42,6 +42,7 @@ def test_dry_run_emits_machine_readable_target_manifest(tmp_path):
         "embedding_provider": "local",
         "embedding_model": "fake-model",
         "embedding_dimension": 8,
+        "score_metric": "cosine",
         "document_count": 1,
         "chunk_count": 1,
         "source_policy": "active_completed",

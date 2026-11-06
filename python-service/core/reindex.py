@@ -166,6 +166,7 @@ def rebuild_index(
         "embedding_provider": embedding_provider,
         "embedding_model": embedding_model,
         "embedding_dimension": report.get("embedding_dimension"),
+        "score_metric": "cosine",
         "document_count": len(active_document_ids),
         "chunk_count": len(documents),
         "source_policy": "active_completed",

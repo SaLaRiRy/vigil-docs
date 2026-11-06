@@ -81,11 +81,6 @@ public class AdminController {
         return Result.success(null);
     }
 
-    @PostMapping("/knowledge/requeue-stale")
-    public Result<Integer> requeueStalePending() {
-        return Result.success(knowledgeService.requeueStalePending());
-    }
-    
     // --- 问答日志管理 ---
     @GetMapping("/logs")
     public Result<IPage<QaLog>> listLogs(@RequestParam(defaultValue = "1") Integer page,

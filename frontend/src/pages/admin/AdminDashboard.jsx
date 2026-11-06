@@ -3,7 +3,7 @@ import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { systemHealthAPI } from '../../api/admin';
 import './AdminDashboard.css';
 
-function AdminHealthBanner({ health, error, loading, onRetry, onRequeue, requeueing }) {
+function AdminHealthBanner({ health, error, loading, onRetry }) {
   if (loading) {
     return (
       <div className="system-health-banner healthy" role="status">
@@ -37,22 +37,19 @@ function AdminHealthBanner({ health, error, loading, onRetry, onRequeue, requeue
         {(health?.vectorIndex?.message || health?.documentConsumer?.message) && (
           <span>{health.vectorIndex?.message || health.documentConsumer?.message}</span>
         )}
-      </div>
-      <div className="system-health-actions">
-        {(health?.documentConsumer?.stalePendingCount ?? 0) > 0 && (
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={onRequeue}
-            disabled={requeueing}
-          >
-            {requeueing ? '重投中…' : '重投滞留文档'}
-          </button>
+        {health?.vectorIndex?.indexedDocumentIds?.length > 0 && (
+          <span>
+            已索引文档：
+            {health.vectorIndex.indexedDocumentIds.slice(0, 20).join(', ')}
+            {health.vectorIndex.indexedDocumentIds.length > 20
+              ? ` 等 ${health.vectorIndex.indexedDocumentIds.length} 个`
+              : ''}
+          </span>
         )}
-        <button type="button" className="btn btn-default" onClick={onRetry}>
-          刷新状态
-        </button>
       </div>
+      <button type="button" className="btn btn-default" onClick={onRetry}>
+        刷新状态
+      </button>
     </div>
   );
 }
@@ -65,7 +62,6 @@ export default function AdminDashboard() {
   const [systemHealth, setSystemHealth] = useState(null);
   const [healthError, setHealthError] = useState(null);
   const [healthLoading, setHealthLoading] = useState(true);
-  const [requeueingStale, setRequeueingStale] = useState(false);
 
   const loadSystemHealth = useCallback(async () => {
     setHealthLoading(true);
@@ -79,18 +75,6 @@ export default function AdminDashboard() {
       setHealthLoading(false);
     }
   }, []);
-
-  const requeueStaleDocuments = async () => {
-    setRequeueingStale(true);
-    try {
-      await systemHealthAPI.requeueStalePending();
-      await loadSystemHealth();
-    } catch {
-      setHealthError('滞留文档重投失败');
-    } finally {
-      setRequeueingStale(false);
-    }
-  };
 
   useEffect(() => {
     document.title = 'VigilDocs - 管理后台';
@@ -184,8 +168,6 @@ export default function AdminDashboard() {
           error={healthError}
           loading={healthLoading}
           onRetry={loadSystemHealth}
-          onRequeue={requeueStaleDocuments}
-          requeueing={requeueingStale}
         />
         <Outlet />
       </div>

@@ -35,9 +35,6 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class KnowledgeServiceImpl implements KnowledgeService {
 
-    private static final int STALE_PENDING_MINUTES = 10;
-    private static final int STALE_REQUEUE_BATCH_SIZE = 100;
-
     private final KnowledgeDocMapper knowledgeDocMapper;
     private final DocViewLogMapper docViewLogMapper;
     private final AiService aiService;
@@ -153,34 +150,6 @@ public class KnowledgeServiceImpl implements KnowledgeService {
                     .set(KnowledgeDoc::getErrorMessage, "Unable to publish retry message"));
             throw e;
         }
-    }
-
-    @Override
-    public int requeueStalePending() {
-        List<Long> staleIds = documentProcessingRepository.findStalePendingIds(
-                STALE_PENDING_MINUTES,
-                STALE_REQUEUE_BATCH_SIZE
-        );
-        int requeued = 0;
-        for (Long docId : staleIds) {
-            KnowledgeDoc doc = knowledgeDocMapper.selectById(docId);
-            if (doc == null || !"PENDING".equals(doc.getStatus())) {
-                continue;
-            }
-            try {
-                documentProcessingRepository.prepareRetry(docId);
-                documentQueuePublisher.publish(docId, doc.getFilePath(), 1);
-                requeued++;
-            } catch (RuntimeException e) {
-                log.error("Unable to requeue stale document {}", docId, e);
-                knowledgeDocMapper.update(null, new LambdaUpdateWrapper<KnowledgeDoc>()
-                        .eq(KnowledgeDoc::getId, docId)
-                        .eq(KnowledgeDoc::getStatus, "PENDING")
-                        .set(KnowledgeDoc::getStatus, "FAILED")
-                        .set(KnowledgeDoc::getErrorMessage, "Unable to publish stale requeue message"));
-            }
-        }
-        return requeued;
     }
 
     private void uploadToQiniu(String objectName, InputStream inputStream) {
