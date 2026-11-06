@@ -50,6 +50,7 @@ class IndexManifest:
     embedding_provider: str
     embedding_model: str
     embedding_dimension: int
+    score_metric: str
     built_at: str
     document_count: int
     chunk_count: int
@@ -65,12 +66,14 @@ class IndexManifest:
         document_count: int,
         chunk_count: int,
         source_policy: str = "active_completed",
+        score_metric: str = "cosine",
     ) -> "IndexManifest":
         return cls(
             schema_version=INDEX_SCHEMA_VERSION,
             embedding_provider=embedding_provider,
             embedding_model=embedding_model,
             embedding_dimension=embedding_dimension,
+            score_metric=score_metric,
             built_at=datetime.now(timezone.utc).isoformat(),
             document_count=document_count,
             chunk_count=chunk_count,
@@ -84,6 +87,7 @@ class IndexManifest:
             "embedding_provider",
             "embedding_model",
             "embedding_dimension",
+            "score_metric",
             "built_at",
             "document_count",
             "chunk_count",
@@ -97,6 +101,7 @@ class IndexManifest:
             embedding_provider=str(value["embedding_provider"]),
             embedding_model=str(value["embedding_model"]),
             embedding_dimension=int(value["embedding_dimension"]),
+            score_metric=str(value["score_metric"]),
             built_at=str(value["built_at"]),
             document_count=int(value["document_count"]),
             chunk_count=int(value["chunk_count"]),
@@ -109,6 +114,8 @@ class IndexManifest:
             )
         if manifest.embedding_dimension <= 0:
             raise ValueError("embedding_dimension must be positive")
+        if manifest.score_metric != "cosine":
+            raise ValueError("score_metric must be cosine")
         return manifest
 
     def to_dict(self) -> Dict[str, Any]:
@@ -126,6 +133,7 @@ class IndexManifest:
             and self.embedding_provider == embedding_provider
             and self.embedding_model == embedding_model
             and self.embedding_dimension == embedding_dimension
+            and self.score_metric == "cosine"
         )
 
 

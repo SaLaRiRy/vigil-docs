@@ -10,7 +10,7 @@ from langchain_community.docstore.in_memory import InMemoryDocstore
 from langchain_core.documents import Document
 from langchain_core.embeddings import Embeddings
 
-from core.vector_index import VectorIndexUnavailableError
+from core.vector_index import IndexManifest, VectorIndexUnavailableError, write_manifest
 from core.vector_store import VectorStoreManager
 
 
@@ -60,6 +60,34 @@ def test_incompatible_index_is_unavailable_instead_of_returning_empty_results(tm
     assert manager.get_health()["status"] == "UNAVAILABLE"
     with pytest.raises(VectorIndexUnavailableError):
         manager.search("事务 ACID 是什么", similarity_threshold=0.7, use_rerank=False)
+
+
+def test_l2_index_is_unavailable_even_when_manifest_dimensions_match(tmp_path):
+    index_path = tmp_path / "faiss_index"
+    write_index(index_path, dimension=4)
+    write_manifest(
+        index_path,
+        IndexManifest.build(
+            embedding_provider="local",
+            embedding_model="fake-model",
+            embedding_dimension=4,
+            document_count=1,
+            chunk_count=1,
+            score_metric="cosine",
+        ),
+    )
+
+    manager = VectorStoreManager(
+        persist_directory=str(index_path),
+        use_milvus=False,
+        embeddings=FixedEmbeddings(dimension=4),
+        reranker=None,
+        embedding_provider="local",
+        embedding_model="fake-model",
+    )
+
+    assert manager.get_health()["status"] == "UNAVAILABLE"
+    assert "cosine" in manager.get_health()["message"]
 
 
 def test_relevant_document_passes_production_similarity_threshold(tmp_path):

@@ -232,6 +232,11 @@ class VectorStoreManager:
             )
             return
 
+        if not isinstance(self.vector_store.index, faiss.IndexFlatIP):
+            self._health_status = "UNAVAILABLE"
+            self._health_message = "索引不是 cosine/inner-product 度量，需要重新构建"
+            return
+
         if int(self.vector_store.index.ntotal) == 0:
             self._health_status = "EMPTY"
             self._health_message = "向量索引为空"
@@ -281,6 +286,9 @@ class VectorStoreManager:
         """
         if not documents:
             return
+        health = self.get_health()
+        if health["status"] == "UNAVAILABLE":
+            raise VectorIndexUnavailableError(health["message"])
 
         if self.vector_store is None:
             if self.use_milvus:
@@ -377,6 +385,7 @@ class VectorStoreManager:
             document_count=len(document_ids),
             chunk_count=int(self.vector_store.index.ntotal),
             source_policy="active_completed",
+            score_metric="cosine",
         )
         write_manifest(self.persist_directory, manifest)
         self.manifest = manifest
@@ -499,6 +508,10 @@ class VectorStoreManager:
         Milvus: 支持高效删除
         FAISS: 标记删除（实际需要重建索引）
         """
+        health = self.get_health()
+        if health["status"] == "UNAVAILABLE":
+            raise VectorIndexUnavailableError(health["message"])
+
         if self.vector_store is None:
             config.logger.warning(f"No vector store available, cannot delete doc_id: {doc_id}")
             return
