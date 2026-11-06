@@ -12,6 +12,7 @@ from core.document_processor import DocumentProcessor, ProcessingAttemptFailed
 from core.message_contract import MessageContractError, validate_document_message
 from core.mysql_client import mysql_client
 from core.parser import DocumentParser
+from core.runtime_health import index_ready_for_consumption
 from core.vector_store import vector_store
 from tools.delete_document import DeleteDocumentTool
 from tools.registry import tool_registry
@@ -109,6 +110,16 @@ def main() -> None:
             channel = connection.channel()
             channel.basic_qos(prefetch_count=1)
             declare_topology(channel)
+            if not index_ready_for_consumption(vector_store):
+                health = vector_store.get_health()
+                logging.error(
+                    "Document consumer paused: vector index is %s (%s)",
+                    health.get("status"),
+                    health.get("message"),
+                )
+                connection.close()
+                time.sleep(3)
+                continue
             processor = DocumentProcessor(DocumentParser(), mysql_client, vector_store)
             approval_executor = ApprovalExecutionService(mysql_client, vector_store)
             tool_registry.register_tool(DeleteDocumentTool(approval_executor))

@@ -1,12 +1,71 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
+import { systemHealthAPI } from '../../api/admin';
 import './AdminDashboard.css';
+
+function AdminHealthBanner({ health, error, loading, onRetry }) {
+  if (loading) {
+    return (
+      <div className="system-health-banner healthy" role="status">
+        <div>
+          <strong>正在获取系统健康状态</strong>
+          <span>索引和文档处理状态检查中…</span>
+        </div>
+      </div>
+    );
+  }
+  const vectorStatus = health?.vectorIndex?.status;
+  const consumerStatus = health?.documentConsumer?.status;
+  const degraded =
+    error ||
+    (vectorStatus && !['HEALTHY', 'EMPTY'].includes(vectorStatus)) ||
+    (consumerStatus && consumerStatus !== 'HEALTHY');
+  const className = degraded ? 'system-health-banner degraded' : 'system-health-banner healthy';
+
+  return (
+    <div className={className} role={degraded ? 'alert' : 'status'}>
+      <div>
+        <strong>{degraded ? '系统需要检查' : '系统运行正常'}</strong>
+        <span>
+          {error ||
+            `索引：${vectorStatus || '未知'} · Consumer：${consumerStatus || '未知'}${
+              health?.documentConsumer
+                ? ` · 队列 ${health.documentConsumer.queueDepth ?? 0} · Consumer ${health.documentConsumer.consumerCount ?? 0}`
+                : ''
+            }`}
+        </span>
+        {(health?.vectorIndex?.message || health?.documentConsumer?.message) && (
+          <span>{health.vectorIndex?.message || health.documentConsumer?.message}</span>
+        )}
+      </div>
+      <button type="button" className="btn btn-default" onClick={onRetry}>
+        刷新状态
+      </button>
+    </div>
+  );
+}
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
   const location = useLocation();
   const [adminInfo, setAdminInfo] = useState(null);
   const [activeMenu, setActiveMenu] = useState('users');
+  const [systemHealth, setSystemHealth] = useState(null);
+  const [healthError, setHealthError] = useState(null);
+  const [healthLoading, setHealthLoading] = useState(true);
+
+  const loadSystemHealth = useCallback(async () => {
+    setHealthLoading(true);
+    setHealthError(null);
+    try {
+      const response = await systemHealthAPI.get();
+      setSystemHealth(response.data);
+    } catch {
+      setHealthError('无法获取系统健康状态');
+    } finally {
+      setHealthLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     document.title = 'VigilDocs - 管理后台';
@@ -34,6 +93,12 @@ export default function AdminDashboard() {
     else if (path.includes('/reports')) setActiveMenu('reports');
     else if (path.includes('/chat')) setActiveMenu('chat');
   }, [navigate, location.pathname]);
+
+  useEffect(() => {
+    loadSystemHealth();
+    const timer = window.setInterval(loadSystemHealth, 30000);
+    return () => window.clearInterval(timer);
+  }, [loadSystemHealth]);
 
   const handleLogout = () => {
     localStorage.removeItem('adminToken');
@@ -89,6 +154,12 @@ export default function AdminDashboard() {
       </div>
 
       <div className="admin-main">
+        <AdminHealthBanner
+          health={systemHealth}
+          error={healthError}
+          loading={healthLoading}
+          onRetry={loadSystemHealth}
+        />
         <Outlet />
       </div>
     </div>

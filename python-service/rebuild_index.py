@@ -1,12 +1,14 @@
 """Safely rebuild the FAISS index from active completed document chunks."""
 
 import argparse
+import os
 from pathlib import Path
 import json
 
 from dotenv import load_dotenv
 
 load_dotenv(dotenv_path=Path(__file__).parent / ".env")
+os.environ.setdefault("VECTOR_STORE_DISABLE_GLOBAL_INIT", "1")
 
 from core.config import config
 from core.mysql_client import mysql_client

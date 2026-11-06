@@ -5,6 +5,7 @@ from core.parser import DocumentParser
 from core.vector_store import vector_store
 from core.llm import LLMService
 from core.mysql_client import mysql_client
+from core.runtime_health import get_runtime_health
 from workflows import RouterAgent
 import os
 import re
@@ -512,6 +513,12 @@ async def get_vector_store_stats():
 async def vector_store_health():
     """暴露向量索引兼容性和可检索状态。"""
     return vector_store.get_health()
+
+
+@router.get("/runtime-health")
+async def runtime_health():
+    """暴露索引、文档 consumer、队列深度和滞留 PENDING 状态。"""
+    return get_runtime_health(vector_store, mysql_client)
 
 @router.post("/vector-store/migrate")
 async def migrate_to_milvus():
