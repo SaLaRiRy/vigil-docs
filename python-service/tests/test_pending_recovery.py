@@ -24,7 +24,7 @@ class FakePublisher:
         self.published.append((document_id, storage_path, attempt))
 
 
-def pending_row(status="PENDING", attempts=0):
+def pending_row(status="PENDING", attempts=1):
     return {
         "id": 62,
         "file_path": "D:/uploads/defect.txt",
@@ -47,7 +47,7 @@ def test_dry_run_reports_stale_pending_document_without_publishing():
 
     assert report["status"] == "would_requeue"
     assert report["document_id"] == 62
-    assert report["attempts"] == 0
+    assert report["attempts"] == 1
     assert publisher.published == []
 
 
@@ -64,6 +64,21 @@ def test_apply_requeues_the_explicit_pending_document_once():
 
     assert report["status"] == "requeued"
     assert publisher.published == [(62, "D:/uploads/defect.txt", 1)]
+
+
+def test_unstarted_pending_requires_explicit_override():
+    publisher = FakePublisher()
+
+    with pytest.raises(PendingRecoveryError, match="可能仍在队列中"):
+        recover_pending_document(
+            mysql=FakeMySQL(pending_row(attempts=0)),
+            publisher=publisher,
+            index_health={"status": "HEALTHY"},
+            document_id=62,
+            apply=True,
+        )
+
+    assert publisher.published == []
 
 
 def test_recovery_refuses_unhealthy_index_before_touching_queue():

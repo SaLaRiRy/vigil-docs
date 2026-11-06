@@ -15,6 +15,7 @@ def recover_pending_document(
     index_health: Dict[str, Any],
     document_id: int,
     apply: bool = False,
+    allow_unstarted: bool = False,
 ) -> Dict[str, Any]:
     """Inspect or explicitly requeue one stale pending document."""
     if not isinstance(document_id, int) or document_id <= 0:
@@ -43,12 +44,20 @@ def recover_pending_document(
     if not row.get("file_path"):
         raise PendingRecoveryError(f"文档 {document_id} 缺少原始文件路径")
 
+    attempts = int(row.get("attempts") or 0)
+    if attempts == 0 and not allow_unstarted:
+        raise PendingRecoveryError(
+            f"文档 {document_id} 尚未产生处理尝试，可能仍在队列中；"
+            "确认无排队消息后使用 --allow-unstarted"
+        )
+
     report = {
         "document_id": int(row["id"]),
         "storage_path": row["file_path"],
-        "attempts": int(row.get("attempts") or 0),
+        "attempts": attempts,
         "dead_lettered": bool(row.get("dead_lettered")),
         "source_policy": "explicit_pending_only",
+        "allow_unstarted": allow_unstarted,
         "status": "requeued" if apply else "would_requeue",
     }
     if apply:

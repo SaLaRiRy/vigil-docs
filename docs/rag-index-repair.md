@@ -88,3 +88,4 @@ Invoke-RestMethod http://127.0.0.1:8000/api/runtime-health
 ```
 
 第一条命令只报告状态和来源策略；第二条命令确认后才发布一条持久化处理消息。该命令只接受 `PENDING` 文档，不会删除或改写文档、chunk 或队列中的既有消息。
+对于 `attempts=0` 的文档，命令会默认拒绝，因为它很可能仍在队列中；确认队列里没有对应消息后，才可追加 `--allow-unstarted`。

@@ -71,6 +71,11 @@ def build_parser():
         action="store_true",
         help="确认后重新投递一条持久化文档处理消息",
     )
+    parser.add_argument(
+        "--allow-unstarted",
+        action="store_true",
+        help="允许重投 attempts=0 的 PENDING；仅确认队列中没有重复消息后使用",
+    )
     return parser
 
 
@@ -90,6 +95,7 @@ def main(argv=None):
         index_health=manager.get_health(),
         document_id=args.doc_id,
         apply=args.apply,
+        allow_unstarted=args.allow_unstarted,
     )
     print(json.dumps(report, ensure_ascii=False, indent=2))
     return 0
