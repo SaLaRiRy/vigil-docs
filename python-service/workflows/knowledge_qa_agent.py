@@ -4,6 +4,7 @@ from agent.state import AgentState
 from agent.events import EventBus, event_bus
 from workflows.retrieval_agent import RetrievalAgent
 from core.vector_store import vector_store
+from core.vector_index import VectorIndexUnavailableError
 from core.llm import LLMService
 from tools.registry import tool_registry
 import logging
@@ -15,13 +16,20 @@ logger = logging.getLogger(__name__)
 class KnowledgeQAAgent:
     """知识问答Agent - 三级链路：L1简化/L2标准/L3推理"""
 
-    def __init__(self):
-        self.orchestrator = Orchestrator()
+    def __init__(
+        self,
+        vector_store=None,
+        llm_service=None,
+        retrieval_agent=None,
+        router=None,
+        orchestrator=None,
+    ):
+        self.orchestrator = orchestrator or Orchestrator()
         self.event_bus = event_bus
-        self.retrieval_agent = RetrievalAgent()
-        self.vector_store = vector_store
-        self.llm_service = LLMService()
-        self._router = None
+        self.retrieval_agent = retrieval_agent or RetrievalAgent()
+        self.vector_store = vector_store or globals()["vector_store"]
+        self.llm_service = llm_service or LLMService()
+        self._router = router
         self._reasoning_agent = None
 
     @property
@@ -83,6 +91,9 @@ class KnowledgeQAAgent:
             else:
                 return self._ask_l1(question, conversation_id, full_context)
 
+        except VectorIndexUnavailableError as e:
+            logger.error(f"[KnowledgeQAAgent] Vector index unavailable: {e}")
+            return self._index_unavailable_result()
         except Exception as e:
             logger.error(f"[KnowledgeQAAgent] QA failed: {e}", exc_info=True)
             return {
@@ -92,6 +103,17 @@ class KnowledgeQAAgent:
                 "task_type": "knowledge_qa",
                 "error": True
             }
+
+    @staticmethod
+    def _index_unavailable_result() -> Dict[str, Any]:
+        return {
+            "answer": "知识库检索暂时不可用，请联系管理员检查向量索引。",
+            "sources": [],
+            "has_sources": False,
+            "task_type": "knowledge_qa",
+            "error": True,
+            "error_code": "INDEX_UNAVAILABLE",
+        }
 
     def _ask_l1(self, question: str, conversation_id: Optional[str],
                 full_context: str) -> Dict[str, Any]:
@@ -103,10 +125,7 @@ class KnowledgeQAAgent:
         logger.info(f"[KnowledgeQAAgent] L1 retrieved {len(docs)} documents")
 
         if not docs:
-            if full_context:
-                answer = self.llm_service.get_answer(question, [], full_context)
-            else:
-                answer = "抱歉，知识库中没有找到与您问题相关的内容。"
+            answer = "抱歉，知识库中没有找到与您问题相关的内容。"
             self._save_to_memory(conversation_id, question, answer)
             return {"answer": answer, "sources": [], "has_sources": False, "task_type": "knowledge_qa"}
 
@@ -129,6 +148,12 @@ class KnowledgeQAAgent:
             use_rerank=True,
             top_k=5
         )
+
+        if not retrieval_result.success:
+            logger.error(
+                f"[KnowledgeQAAgent] L2 retrieval failed: {retrieval_result.error}"
+            )
+            return self._index_unavailable_result()
 
         docs = retrieval_result.reranked_documents
         logger.info(f"[KnowledgeQAAgent] L2 retrieved {len(docs)} documents "
@@ -240,6 +265,27 @@ class KnowledgeQAAgent:
 
             logger.info(f"[KnowledgeQAAgent] Retrieved {len(docs)} documents")
 
+            if not docs:
+                answer = "抱歉，知识库中没有找到与您问题相关的内容。"
+                yield json.dumps({"type": "token", "content": answer}, ensure_ascii=False)
+                yield json.dumps(
+                    {
+                        "type": "end",
+                        "content": answer,
+                        "task_type": "knowledge_qa",
+                    },
+                    ensure_ascii=False,
+                )
+                yield json.dumps(
+                    {
+                        "type": "sources",
+                        "sources": [],
+                        "task_type": "knowledge_qa",
+                    },
+                    ensure_ascii=False,
+                )
+                return
+
             # 2. 构建引用来源（按 doc_id 去重）
             seen_doc_ids = set()
             sources = []
@@ -272,6 +318,16 @@ class KnowledgeQAAgent:
                 "task_type": "knowledge_qa"
             })
 
+        except VectorIndexUnavailableError as e:
+            logger.error(f"[KnowledgeQAAgent] Stream vector index unavailable: {e}")
+            yield json.dumps(
+                {
+                    "type": "error",
+                    "content": "知识库检索暂时不可用，请联系管理员检查向量索引。",
+                    "error_code": "INDEX_UNAVAILABLE",
+                },
+                ensure_ascii=False,
+            )
         except Exception as e:
             logger.error(f"[KnowledgeQAAgent] Stream QA failed: {e}", exc_info=True)
             yield json.dumps({

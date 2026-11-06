@@ -131,7 +131,13 @@ class MySQLClient:
             logger.error(f"Error fetching one: {e}")
             return None
 
-    def fetch_all(self, sql: str, params: tuple = None) -> List[Dict[str, Any]]:
+    def fetch_all(
+        self,
+        sql: str,
+        params: tuple = None,
+        *,
+        raise_on_error: bool = False,
+    ) -> List[Dict[str, Any]]:
         """执行查询并返回所有结果"""
         if not self.connection or not self.connection.is_connected():
             self.connect()
@@ -150,6 +156,8 @@ class MySQLClient:
         
         except Error as e:
             logger.error(f"Error fetching all: {e}")
+            if raise_on_error:
+                raise
             return []
 
     def execute(self, sql: str, params: tuple = None) -> int:

@@ -507,6 +507,12 @@ async def get_vector_store_stats():
         )
         raise HTTPException(status_code=500, detail="获取向量库统计信息失败")
 
+
+@router.get("/health")
+async def vector_store_health():
+    """暴露向量索引兼容性和可检索状态。"""
+    return vector_store.get_health()
+
 @router.post("/vector-store/migrate")
 async def migrate_to_milvus():
     """
