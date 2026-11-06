@@ -73,6 +73,37 @@ def test_incompatible_index_is_unavailable_instead_of_returning_empty_results(tm
         manager.search("事务 ACID 是什么", similarity_threshold=0.7, use_rerank=False)
 
 
+def test_legacy_1536_index_fails_against_512_embedding_model(tmp_path):
+    index_path = tmp_path / "faiss_index"
+    write_index(index_path, dimension=1536)
+    write_manifest(
+        index_path,
+        IndexManifest.build(
+            embedding_provider="local",
+            embedding_model="legacy-model",
+            embedding_dimension=1536,
+            document_count=1,
+            chunk_count=1,
+        ),
+    )
+
+    manager = VectorStoreManager(
+        persist_directory=str(index_path),
+        use_milvus=False,
+        embeddings=FixedEmbeddings(dimension=512),
+        reranker=None,
+        embedding_provider="local",
+        embedding_model="legacy-model",
+    )
+
+    health = manager.get_health()
+    assert health["status"] == "UNAVAILABLE"
+    assert "1536" in health["message"]
+    assert "512" in health["message"]
+    with pytest.raises(VectorIndexUnavailableError):
+        manager.search("事务 ACID 是什么", similarity_threshold=0.7, use_rerank=False)
+
+
 def test_l2_index_is_unavailable_even_when_manifest_dimensions_match(tmp_path):
     index_path = tmp_path / "faiss_index"
     write_index(index_path, dimension=4)

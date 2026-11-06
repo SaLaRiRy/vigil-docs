@@ -221,3 +221,52 @@ def test_question_api_exposes_an_unavailable_index_to_clients(monkeypatch):
     assert response.json()["error"] is True
     assert response.json()["error_code"] == "INDEX_UNAVAILABLE"
     assert response.json()["sources"] == []
+
+
+def _ask_api(agent, monkeypatch):
+    import api.routes as routes
+
+    class AgentRouter:
+        def route(self, **kwargs):
+            return agent.ask(kwargs["input_text"])
+
+    monkeypatch.setattr(routes, "router_agent", AgentRouter())
+    app = FastAPI()
+    app.include_router(routes.router, prefix="/api")
+    return TestClient(app)
+
+
+def test_question_api_returns_retrieved_source(monkeypatch):
+    client = _ask_api(
+        KnowledgeQAAgent(
+            vector_store=WorkingVectorStore(),
+            llm_service=RecordingLLM(),
+            router=SimpleRouter(),
+        ),
+        monkeypatch,
+    )
+
+    response = client.post("/api/ask", json={"question": "事务 ACID 是什么"})
+
+    assert response.status_code == 200
+    assert response.json()["sources"][0]["doc_id"] == 42
+    assert response.json()["has_sources"] is True
+    assert response.json().get("error") is False
+
+
+def test_question_api_reports_a_genuine_no_match(monkeypatch):
+    client = _ask_api(
+        KnowledgeQAAgent(
+            vector_store=EmptyVectorStore(),
+            llm_service=RecordingLLM(),
+            router=SimpleRouter(),
+        ),
+        monkeypatch,
+    )
+
+    response = client.post("/api/ask", json={"question": "完全不存在的问题"})
+
+    assert response.status_code == 200
+    assert response.json()["sources"] == []
+    assert "知识库中没有找到" in response.json()["answer"]
+    assert response.json().get("error") is False
