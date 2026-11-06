@@ -167,9 +167,9 @@ npm run build
 
 当前基线：
 
-- Python：130 个测试通过。
-- Java：10 个测试通过。
-- 前端 production build 通过。
+- Python：172 个测试通过。
+- Java：12 个测试通过。
+- 前端：7 个测试通过，production build 通过。
 - GitHub Actions 包含 Python、Java 和 Frontend 三个任务。
 
 ## 文档
