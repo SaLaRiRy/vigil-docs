@@ -1,9 +1,13 @@
 import json
 import logging
+from pathlib import Path
 import time
 from typing import Any, Dict
 
 import pika
+from dotenv import load_dotenv
+
+load_dotenv(dotenv_path=Path(__file__).parent / ".env")
 
 from core.approval_consumer import ApprovalDecisionHandler
 from core.approval_execution import ApprovalExecutionService
