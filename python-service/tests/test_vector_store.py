@@ -280,3 +280,42 @@ def test_document_deletion_updates_manifest_counts(tmp_path):
     assert health["status"] == "EMPTY"
     assert health["document_count"] == 0
     assert health["chunk_count"] == 0
+
+
+def test_search_refreshes_when_consumer_process_updates_index(tmp_path):
+    index_path = tmp_path / "faiss_index"
+    embeddings = FixedEmbeddings(dimension=8)
+    writer = VectorStoreManager(
+        persist_directory=str(index_path),
+        use_milvus=False,
+        embeddings=embeddings,
+        reranker=None,
+    )
+    writer.add_documents(
+        [
+            Document(
+                page_content="事务 ACID 初始内容",
+                metadata={"doc_id": 1, "chunk_id": 10, "chunk_index": 0},
+            )
+        ]
+    )
+    reader = VectorStoreManager(
+        persist_directory=str(index_path),
+        use_milvus=False,
+        embeddings=embeddings,
+        reranker=None,
+    )
+
+    writer.add_documents(
+        [
+            Document(
+                page_content="事务 ACID 后续消费者新增内容",
+                metadata={"doc_id": 2, "chunk_id": 20, "chunk_index": 0},
+            )
+        ]
+    )
+
+    results = reader.search(
+        "事务 ACID 是什么", similarity_threshold=0.5, use_rerank=False
+    )
+    assert 2 in {document.metadata["doc_id"] for document in results}

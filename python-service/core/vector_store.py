@@ -15,6 +15,7 @@ from core.vector_index import (
     NormalizedEmbeddings,
     VectorIndexUnavailableError,
     load_manifest,
+    manifest_path,
     write_manifest,
 )
 
@@ -93,6 +94,7 @@ class VectorStoreManager:
         self.vector_store = None
         self.manifest = None
         self._embedding_dimension_value = None
+        self._manifest_mtime_ns = None
         self._health_status = "UNAVAILABLE"
         self._health_message = "Vector store has not been initialized"
 
@@ -182,6 +184,7 @@ class VectorStoreManager:
         """
         config.logger.info("Using FAISS vector store (fallback mode)")
         if os.path.exists(self.persist_directory):
+            self._manifest_mtime_ns = self._get_manifest_mtime()
             try:
                 self.vector_store = FAISS.load_local(self.persist_directory, self.embeddings, allow_dangerous_deserialization=True)
                 config.logger.info(f"Loaded existing FAISS index from {self.persist_directory}")
@@ -195,6 +198,7 @@ class VectorStoreManager:
             self.vector_store = None
             self._health_status = "EMPTY"
             self._health_message = "尚未创建向量索引"
+            self._manifest_mtime_ns = None
             config.logger.info("No existing FAISS index found, will create new one when needed")
             return
 
@@ -245,6 +249,21 @@ class VectorStoreManager:
             self._health_status = "HEALTHY"
             self._health_message = "向量索引可检索"
 
+    def _get_manifest_mtime(self) -> Optional[int]:
+        try:
+            return manifest_path(self.persist_directory).stat().st_mtime_ns
+        except FileNotFoundError:
+            return None
+
+    def _refresh_faiss_if_changed(self):
+        if self.use_milvus:
+            return
+        current_mtime = self._get_manifest_mtime()
+        if current_mtime == self._manifest_mtime_ns:
+            return
+        config.logger.info("Detected external vector index update; reloading")
+        self._init_faiss()
+
     @property
     def embedding_dimension(self) -> int:
         if self._embedding_dimension_value is None:
@@ -253,6 +272,7 @@ class VectorStoreManager:
         return self._embedding_dimension_value
 
     def get_health(self) -> Dict[str, Any]:
+        self._refresh_faiss_if_changed()
         if self.use_milvus:
             status = "HEALTHY" if self.vector_store is not None else "UNAVAILABLE"
             return {
@@ -398,6 +418,7 @@ class VectorStoreManager:
             score_metric="cosine",
         )
         write_manifest(self.persist_directory, manifest)
+        self._manifest_mtime_ns = self._get_manifest_mtime()
         self.manifest = manifest
         self._health_status = "HEALTHY" if self.vector_store.index.ntotal else "EMPTY"
         self._health_message = "向量索引可检索" if self.vector_store.index.ntotal else "向量索引为空"

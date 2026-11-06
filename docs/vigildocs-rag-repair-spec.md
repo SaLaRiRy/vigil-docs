@@ -1,8 +1,10 @@
 # VigilDocs RAG 检索与异步处理修复规格
 
-> 状态：待发布到 GitHub Issue  
-> Triage：`ready-for-agent`  
-> 本文件是 `$to-spec` 生成的修理清单；在发布前不执行修复。
+> 状态：已发布为 GitHub Issue #10
+>
+> Triage：`ready-for-agent`
+>
+> 本文件是 `$to-spec` 生成的修理清单，作为实现与验收的上下文。
 
 ## Problem Statement
 
