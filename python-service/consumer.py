@@ -91,6 +91,34 @@ def handle_document_message(
             publish_json(channel, RETRY_ROUTING_KEY, payload)
 
 
+def process_document_delivery(
+    *,
+    channel,
+    delivery_tag: int,
+    body: bytes,
+    processor: DocumentProcessor,
+    vector_store,
+) -> bool:
+    """Process one delivery only while the vector index is ready."""
+    if not index_ready_for_consumption(vector_store):
+        health = vector_store.get_health()
+        logging.error(
+            "Document delivery requeued: vector index is %s (%s)",
+            health.get("status"),
+            health.get("message"),
+        )
+        channel.basic_nack(delivery_tag=delivery_tag, requeue=True)
+        return False
+
+    try:
+        handle_document_message(channel, body, processor)
+    except Exception:
+        channel.basic_nack(delivery_tag=delivery_tag, requeue=True)
+        raise
+    channel.basic_ack(delivery_tag=delivery_tag)
+    return True
+
+
 def make_connection() -> pika.BlockingConnection:
     credentials = pika.PlainCredentials(config.RABBITMQ_USERNAME, config.RABBITMQ_PASSWORD)
     return pika.BlockingConnection(
@@ -126,12 +154,13 @@ def main() -> None:
             approval_handler = ApprovalDecisionHandler(approval_executor, tool_registry)
 
             def callback(ch, method, properties, message_body):
-                try:
-                    handle_document_message(ch, message_body, processor)
-                finally:
-                    # Status is terminal, or the retry/dead-letter message has
-                    # been durably accepted before the original delivery is acked.
-                    ch.basic_ack(delivery_tag=method.delivery_tag)
+                process_document_delivery(
+                    channel=ch,
+                    delivery_tag=method.delivery_tag,
+                    body=message_body,
+                    processor=processor,
+                    vector_store=vector_store,
+                )
 
             channel.basic_consume(queue=config.DOCUMENT_QUEUE, on_message_callback=callback)
             def approval_callback(ch, method, properties, message_body):
