@@ -26,6 +26,7 @@ $env:HF_HUB_OFFLINE='1'
 - `active_document_count`、`active_chunk_count` 是否是本次要恢复的范围。
 - `orphan_documents` 是否与已知历史数据一致。
 - `duplicate_chunk_indexes` 是否只是历史解析数据；重复内容会按文档和正文哈希去重。
+- `target_manifest` 是否记录了 schema 版本、embedding 模型/维度、文档数、chunk 数和 `active_completed` 来源策略。
 
 Dry-run 不创建、不移动、不覆盖活动索引。
 
@@ -75,4 +76,13 @@ Invoke-RestMethod http://127.0.0.1:8000/api/runtime-health
 - consumer 在向量索引 `HEALTHY` 或 `EMPTY` 前不会消费消息。
 - 有排队消息但 `consumerCount=0` 时，健康接口会报告 `DEGRADED`。
 - 长时间无 processing attempt 的 `PENDING` 文档会在 `stalePendingCount` 中显示。
-- 这些恢复动作不会自动修改数据库或队列；需要由管理员显式重投或重新上传。
+- `stalePendingDocumentIds` 会列出需要管理员检查的具体文档 ID。
+- consumer 在处理每条消息前会再次检查索引健康；检查失败时消息退回队列，不会进入解析流程。
+- 恢复动作不会自动修改数据库或队列。确认索引健康后，管理员可对单个文档先预览再显式重投：
+
+```powershell
+.\.venv\Scripts\python.exe .\requeue_document.py --doc-id 47
+.\.venv\Scripts\python.exe .\requeue_document.py --doc-id 47 --apply
+```
+
+第一条命令只报告状态和来源策略；第二条命令确认后才发布一条持久化处理消息。该命令只接受 `PENDING` 文档，不会删除或改写文档、chunk 或队列中的既有消息。

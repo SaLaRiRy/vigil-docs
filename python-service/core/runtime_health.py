@@ -61,19 +61,23 @@ class StalePendingCounter:
         self.stale_after_minutes = max(1, int(stale_after_minutes))
 
     def count(self) -> int:
+        return len(self.list_ids())
+
+    def list_ids(self) -> list[int]:
         rows = self.mysql.fetch_all(
             """
-            SELECT COUNT(*) AS stale_count
+            SELECT d.id
             FROM knowledge_doc d
             LEFT JOIN document_processing p ON p.doc_id = d.id
             WHERE d.status = 'PENDING'
               AND d.create_time < DATE_SUB(NOW(), INTERVAL %s MINUTE)
               AND COALESCE(p.attempts, 0) = 0
+            ORDER BY d.id
             """,
             (self.stale_after_minutes,),
             raise_on_error=True,
         )
-        return int(rows[0]["stale_count"]) if rows else 0
+        return [int(row["id"]) for row in rows]
 
 
 def _consumer_status(
@@ -97,13 +101,31 @@ def build_runtime_health(
     queue_inspector,
     stale_pending_counter,
 ) -> Dict[str, Any]:
-    vector_health = vector_store.get_health()
+    try:
+        vector_health = vector_store.get_health()
+    except Exception as exc:
+        config.logger.exception("Unable to inspect vector index health")
+        vector_health = {
+            "status": "UNAVAILABLE",
+            "message": f"无法检查向量索引状态: {exc}",
+        }
     index_status = vector_health.get("status", "UNAVAILABLE")
+
+    stale_pending_count = 0
+    stale_pending_document_ids = []
+    try:
+        if hasattr(stale_pending_counter, "list_ids"):
+            stale_pending_document_ids = list(stale_pending_counter.list_ids())
+            stale_pending_count = len(stale_pending_document_ids)
+        else:
+            stale_pending_count = int(stale_pending_counter.count())
+    except Exception as exc:
+        config.logger.warning("Unable to inspect stale pending documents: %s", exc)
+
     try:
         queue_health = queue_inspector.inspect()
         queue_depth = int(queue_health.get("queueDepth", 0))
         consumer_count = int(queue_health.get("consumerCount", 0))
-        stale_pending_count = int(stale_pending_counter.count())
         status, message = _consumer_status(
             index_status=index_status,
             queue_depth=queue_depth,
@@ -117,7 +139,9 @@ def build_runtime_health(
                 "status": "UNAVAILABLE",
                 "queueDepth": 0,
                 "consumerCount": 0,
-                "stalePendingCount": 0,
+                "stalePendingCount": stale_pending_count,
+                "stalePendingDocumentIds": stale_pending_document_ids,
+                "waitingForConsumer": False,
                 "message": f"无法获取 Consumer/队列状态: {exc}",
             },
         }
@@ -129,6 +153,8 @@ def build_runtime_health(
             "queueDepth": queue_depth,
             "consumerCount": consumer_count,
             "stalePendingCount": stale_pending_count,
+            "stalePendingDocumentIds": stale_pending_document_ids,
+            "waitingForConsumer": queue_depth > 0 and consumer_count == 0,
             "message": message,
         },
     }

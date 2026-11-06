@@ -91,6 +91,31 @@ def handle_document_message(
             publish_json(channel, RETRY_ROUTING_KEY, payload)
 
 
+def consume_document_delivery(
+    channel,
+    method,
+    body: bytes,
+    processor: DocumentProcessor,
+    index_ready,
+) -> bool:
+    """Process one delivery only while the vector index can safely accept it."""
+    try:
+        healthy = bool(index_ready())
+    except Exception:
+        logging.exception("Unable to re-check vector index health")
+        healthy = False
+
+    if not healthy:
+        logging.error("Vector index became unavailable; requeueing document delivery")
+        channel.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
+        channel.stop_consuming()
+        return False
+
+    handle_document_message(channel, body, processor)
+    channel.basic_ack(delivery_tag=method.delivery_tag)
+    return True
+
+
 def make_connection() -> pika.BlockingConnection:
     credentials = pika.PlainCredentials(config.RABBITMQ_USERNAME, config.RABBITMQ_PASSWORD)
     return pika.BlockingConnection(
@@ -105,6 +130,7 @@ def make_connection() -> pika.BlockingConnection:
 
 def main() -> None:
     while True:
+        connection = None
         try:
             connection = make_connection()
             channel = connection.channel()
@@ -126,12 +152,13 @@ def main() -> None:
             approval_handler = ApprovalDecisionHandler(approval_executor, tool_registry)
 
             def callback(ch, method, properties, message_body):
-                try:
-                    handle_document_message(ch, message_body, processor)
-                finally:
-                    # Status is terminal, or the retry/dead-letter message has
-                    # been durably accepted before the original delivery is acked.
-                    ch.basic_ack(delivery_tag=method.delivery_tag)
+                consume_document_delivery(
+                    ch,
+                    method,
+                    message_body,
+                    processor,
+                    lambda: index_ready_for_consumption(vector_store),
+                )
 
             channel.basic_consume(queue=config.DOCUMENT_QUEUE, on_message_callback=callback)
             def approval_callback(ch, method, properties, message_body):
@@ -151,6 +178,9 @@ def main() -> None:
         except Exception:
             logging.exception("Document consumer disconnected; retrying")
             time.sleep(3)
+        finally:
+            if connection is not None and connection.is_open:
+                connection.close()
 
 
 if __name__ == "__main__":
