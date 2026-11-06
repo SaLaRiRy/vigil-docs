@@ -10,6 +10,7 @@ from langchain_core.documents import Document
 from core.reranker import create_reranker, BaseReranker
 from core.config import config
 from core.vector_index import (
+    DEFAULT_SIMILARITY_THRESHOLD,
     IndexManifest,
     NormalizedEmbeddings,
     VectorIndexUnavailableError,
@@ -401,7 +402,7 @@ class VectorStoreManager:
         self._health_status = "HEALTHY" if self.vector_store.index.ntotal else "EMPTY"
         self._health_message = "向量索引可检索" if self.vector_store.index.ntotal else "向量索引为空"
 
-    def search(self, query: str, k: int = 3, filter_dict: Optional[Dict[str, Any]] = None, similarity_threshold: float = 0.75, use_rerank: bool = True) -> List[Document]:
+    def search(self, query: str, k: int = 3, filter_dict: Optional[Dict[str, Any]] = None, similarity_threshold: float = DEFAULT_SIMILARITY_THRESHOLD, use_rerank: bool = True) -> List[Document]:
         """
         相似度搜索
 

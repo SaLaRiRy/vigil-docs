@@ -4,7 +4,7 @@ from agent.state import AgentState
 from agent.events import EventBus, event_bus
 from workflows.retrieval_agent import RetrievalAgent
 from core.vector_store import vector_store as default_vector_store
-from core.vector_index import VectorIndexUnavailableError
+from core.vector_index import DEFAULT_SIMILARITY_THRESHOLD, VectorIndexUnavailableError
 from core.llm import LLMService
 from tools.registry import tool_registry
 import logging
@@ -120,7 +120,10 @@ class KnowledgeQAAgent:
         """L1 简化链路：直接检索+生成"""
         # 直接向量检索
         docs = self.vector_store.search(
-            query=question, k=5, similarity_threshold=0.7, use_rerank=False
+            query=question,
+            k=5,
+            similarity_threshold=DEFAULT_SIMILARITY_THRESHOLD,
+            use_rerank=False,
         )
         logger.info(f"[KnowledgeQAAgent] L1 retrieved {len(docs)} documents")
 
@@ -259,7 +262,7 @@ class KnowledgeQAAgent:
             docs = self.vector_store.search(
                 query=question,
                 k=5,
-                similarity_threshold=0.7,
+                similarity_threshold=DEFAULT_SIMILARITY_THRESHOLD,
                 use_rerank=False
             )
 

@@ -31,6 +31,17 @@ class FixedEmbeddings(Embeddings):
         return self.query_vector
 
 
+class RelatedQueryEmbeddings(Embeddings):
+    def embed_documents(self, texts):
+        return [
+            [1.0, 0.0] if "ACID" in text or "事务" in text else [0.0, 1.0]
+            for text in texts
+        ]
+
+    def embed_query(self, text):
+        return [0.6, 0.8]
+
+
 def write_index(path, dimension: int):
     docstore = InMemoryDocstore(
         {"doc-1": Document(page_content="事务 ACID 测试内容", metadata={"doc_id": 1})}
@@ -112,6 +123,28 @@ def test_relevant_document_passes_production_similarity_threshold(tmp_path):
 
     assert [document.metadata["doc_id"] for document in results] == [42]
     assert results[0].metadata["score"] >= 0.7
+
+
+def test_semantically_related_cosine_passes_default_threshold(tmp_path):
+    manager = VectorStoreManager(
+        persist_directory=str(tmp_path / "faiss_index"),
+        use_milvus=False,
+        embeddings=RelatedQueryEmbeddings(),
+        reranker=None,
+    )
+    manager.add_documents(
+        [
+            Document(
+                page_content="事务 ACID 包含原子性和一致性。",
+                metadata={"doc_id": 42, "chunk_id": 420, "chunk_index": 0},
+            )
+        ]
+    )
+
+    results = manager.search("事务 ACID 是什么", use_rerank=False)
+
+    assert [document.metadata["doc_id"] for document in results] == [42]
+    assert 0.5 <= results[0].metadata["score"] < 0.7
 
 
 def test_unrelated_document_is_a_healthy_no_match(tmp_path):

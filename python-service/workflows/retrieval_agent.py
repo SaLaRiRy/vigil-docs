@@ -4,6 +4,7 @@ from tools.knowledge_search import KnowledgeSearchTool
 from tools.rerank import RerankTool
 from tools.citation import CitationIntegrator, CitationTracker
 from core.vector_store import vector_store
+from core.vector_index import DEFAULT_SIMILARITY_THRESHOLD
 from core.config import config
 import logging
 import json
@@ -61,7 +62,7 @@ class RetrievalAgent:
         self.config = {
             "top_k": 5,
             "initial_k": 10,
-            "similarity_threshold": 0.7,
+            "similarity_threshold": DEFAULT_SIMILARITY_THRESHOLD,
             "use_rerank": False,   # 默认关闭重排序，减少开销
             "use_rewrite": False,  # 默认关闭问题重写，减少LLM调用
             "max_citations": 5
@@ -74,7 +75,7 @@ class RetrievalAgent:
         use_rewrite: bool = False,
         use_rerank: bool = False,
         top_k: int = 5,
-        similarity_threshold: float = 0.7,
+        similarity_threshold: float = DEFAULT_SIMILARITY_THRESHOLD,
         **kwargs
     ) -> RetrievalResult:
         """
@@ -165,7 +166,7 @@ class RetrievalAgent:
         use_rewrite: bool = False,
         use_rerank: bool = False,
         top_k: int = 5,
-        similarity_threshold: float = 0.7,
+        similarity_threshold: float = DEFAULT_SIMILARITY_THRESHOLD,
         **kwargs
     ) -> Generator[str, None, None]:
         """
@@ -280,7 +281,7 @@ class RetrievalAgent:
         self,
         query: str,
         k: int = 10,
-        similarity_threshold: float = 0.7
+        similarity_threshold: float = DEFAULT_SIMILARITY_THRESHOLD
     ) -> List:
         """执行文档检索"""
         try:

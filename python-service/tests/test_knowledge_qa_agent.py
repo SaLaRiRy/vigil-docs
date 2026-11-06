@@ -27,6 +27,32 @@ class FailedRetrievalAgent:
         )
 
 
+class WorkingRetrievalAgent:
+    def retrieve(self, **kwargs):
+        from workflows.retrieval_agent import RetrievalResult
+
+        document = {
+            "content": "事务 ACID 包含原子性和一致性。",
+            "metadata": {"doc_id": 46, "chunk_index": 1, "score": 0.58},
+        }
+        return RetrievalResult(
+            original_query=kwargs["query"],
+            retrieved_documents=[document],
+            reranked_documents=[document],
+            scores=[0.58],
+            citations={
+                "sources": [
+                    {
+                        "doc_id": 46,
+                        "doc": "文档46",
+                        "score": 0.58,
+                    }
+                ]
+            },
+            success=True,
+        )
+
+
 class FailingVectorStore:
     def search(self, **kwargs):
         raise VectorIndexUnavailableError("索引缺少 manifest")
@@ -150,6 +176,23 @@ def test_stream_reports_unavailable_index_without_llm_fallback():
 
     assert '"error_code": "INDEX_UNAVAILABLE"' in events[-1]
     assert llm.calls == 0
+
+
+def test_medium_path_returns_document_citation_for_short_question():
+    llm = RecordingLLM()
+    agent = KnowledgeQAAgent(
+        vector_store=EmptyVectorStore(),
+        llm_service=llm,
+        retrieval_agent=WorkingRetrievalAgent(),
+        router=MediumRouter(),
+    )
+
+    result = agent.ask("事务ACID是什么")
+
+    assert result["has_sources"] is True
+    assert result["sources"][0]["doc_id"] == 46
+    assert result["sources"][0]["score"] == 0.58
+    assert llm.calls == 1
 
 
 def test_question_api_exposes_an_unavailable_index_to_clients(monkeypatch):

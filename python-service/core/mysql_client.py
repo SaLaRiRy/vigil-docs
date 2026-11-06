@@ -29,7 +29,8 @@ class MySQLClient:
                 password=self.password,
                 use_unicode=True,
                 charset='utf8mb4',
-                time_zone='+08:00'
+                time_zone='+08:00',
+                autocommit=True,
             )
             if self.connection.is_connected():
                 logger.info("Successfully connected to MySQL database")

@@ -11,6 +11,7 @@ from langchain_core.embeddings import Embeddings
 
 INDEX_SCHEMA_VERSION = 1
 INDEX_MANIFEST_FILENAME = "index.manifest.json"
+DEFAULT_SIMILARITY_THRESHOLD = 0.5
 
 
 class VectorIndexUnavailableError(RuntimeError):
