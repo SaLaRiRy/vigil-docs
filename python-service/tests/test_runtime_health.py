@@ -27,12 +27,23 @@ class FakeQueueInspector:
         }
 
 
-class FakeStalePendingCounter:
-    def __init__(self, count=0):
-        self.value = count
+class FakeDocumentWorkCounter:
+    def __init__(
+        self,
+        pending=0,
+        processing=0,
+        stale=0,
+        max_attempts=0,
+    ):
+        self.values = {
+            "pendingCount": pending,
+            "processingCount": processing,
+            "stalePendingCount": stale,
+            "maxProcessingAttempts": max_attempts,
+        }
 
-    def count(self):
-        return self.value
+    def snapshot(self):
+        return dict(self.values)
 
 
 def test_unavailable_index_blocks_consumption():
@@ -45,7 +56,11 @@ def test_queued_messages_without_consumers_are_degraded():
     health = build_runtime_health(
         vector_store=FakeVectorStore("HEALTHY"),
         queue_inspector=FakeQueueInspector(messages=1, consumers=0),
-        stale_pending_counter=FakeStalePendingCounter(count=1),
+        work_counter=FakeDocumentWorkCounter(
+            pending=1,
+            stale=1,
+            max_attempts=0,
+        ),
     )
 
     assert health["vectorIndex"]["status"] == "HEALTHY"
@@ -53,7 +68,10 @@ def test_queued_messages_without_consumers_are_degraded():
         "status": "DEGRADED",
         "queueDepth": 1,
         "consumerCount": 0,
+        "pendingCount": 1,
+        "processingCount": 0,
         "stalePendingCount": 1,
+        "maxProcessingAttempts": 0,
         "message": "有排队消息但 consumer 未运行",
     }
 
@@ -62,7 +80,7 @@ def test_running_consumer_with_empty_queue_is_healthy():
     health = build_runtime_health(
         vector_store=FakeVectorStore("EMPTY"),
         queue_inspector=FakeQueueInspector(messages=0, consumers=1),
-        stale_pending_counter=FakeStalePendingCounter(count=0),
+        work_counter=FakeDocumentWorkCounter(),
     )
 
     assert health["vectorIndex"]["status"] == "EMPTY"

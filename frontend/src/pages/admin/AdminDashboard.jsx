@@ -30,7 +30,7 @@ function AdminHealthBanner({ health, error, loading, onRetry, onRequeue, requeue
           {error ||
             `索引：${vectorStatus || '未知'} · Consumer：${consumerStatus || '未知'}${
               health?.documentConsumer
-                ? ` · 队列 ${health.documentConsumer.queueDepth ?? 0} · Consumer ${health.documentConsumer.consumerCount ?? 0}`
+                ? ` · 队列 ${health.documentConsumer.queueDepth ?? 0} · Consumer ${health.documentConsumer.consumerCount ?? 0} · PENDING ${health.documentConsumer.pendingCount ?? 0} · 处理中 ${health.documentConsumer.processingCount ?? 0} · 滞留 ${health.documentConsumer.stalePendingCount ?? 0} · 最大尝试 ${health.documentConsumer.maxProcessingAttempts ?? 0}`
                 : ''
             }`}
         </span>

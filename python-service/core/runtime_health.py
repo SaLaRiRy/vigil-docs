@@ -53,27 +53,46 @@ class RabbitQueueInspector:
                 connection.close()
 
 
-class StalePendingCounter:
-    """Count pending documents that are old and have no processing progress."""
+class DocumentWorkCounter:
+    """Summarize document work without changing queue or database state."""
 
     def __init__(self, mysql, stale_after_minutes: int = 10):
         self.mysql = mysql
         self.stale_after_minutes = max(1, int(stale_after_minutes))
 
-    def count(self) -> int:
+    def snapshot(self) -> Dict[str, int]:
         rows = self.mysql.fetch_all(
             """
-            SELECT COUNT(*) AS stale_count
+            SELECT
+                SUM(CASE WHEN d.status = 'PENDING' THEN 1 ELSE 0 END)
+                    AS pending_count,
+                SUM(CASE WHEN d.status = 'PROCESSING' THEN 1 ELSE 0 END)
+                    AS processing_count,
+                SUM(
+                    CASE
+                        WHEN d.status = 'PENDING'
+                         AND d.create_time < DATE_SUB(NOW(), INTERVAL %s MINUTE)
+                         AND COALESCE(p.attempts, 0) = 0
+                        THEN 1
+                        ELSE 0
+                    END
+                ) AS stale_pending_count,
+                COALESCE(MAX(p.attempts), 0) AS max_processing_attempts
             FROM knowledge_doc d
             LEFT JOIN document_processing p ON p.doc_id = d.id
-            WHERE d.status = 'PENDING'
-              AND d.create_time < DATE_SUB(NOW(), INTERVAL %s MINUTE)
-              AND COALESCE(p.attempts, 0) = 0
             """,
             (self.stale_after_minutes,),
             raise_on_error=True,
         )
-        return int(rows[0]["stale_count"]) if rows else 0
+        row = rows[0] if rows else {}
+        return {
+            "pendingCount": int(row.get("pending_count") or 0),
+            "processingCount": int(row.get("processing_count") or 0),
+            "stalePendingCount": int(row.get("stale_pending_count") or 0),
+            "maxProcessingAttempts": int(
+                row.get("max_processing_attempts") or 0
+            ),
+        }
 
 
 def _consumer_status(
@@ -95,7 +114,7 @@ def build_runtime_health(
     *,
     vector_store,
     queue_inspector,
-    stale_pending_counter,
+    work_counter,
 ) -> Dict[str, Any]:
     vector_health = vector_store.get_health()
     index_status = vector_health.get("status", "UNAVAILABLE")
@@ -103,7 +122,7 @@ def build_runtime_health(
         queue_health = queue_inspector.inspect()
         queue_depth = int(queue_health.get("queueDepth", 0))
         consumer_count = int(queue_health.get("consumerCount", 0))
-        stale_pending_count = int(stale_pending_counter.count())
+        work_snapshot = work_counter.snapshot()
         status, message = _consumer_status(
             index_status=index_status,
             queue_depth=queue_depth,
@@ -117,7 +136,10 @@ def build_runtime_health(
                 "status": "UNAVAILABLE",
                 "queueDepth": 0,
                 "consumerCount": 0,
+                "pendingCount": 0,
+                "processingCount": 0,
                 "stalePendingCount": 0,
+                "maxProcessingAttempts": 0,
                 "message": f"无法获取 Consumer/队列状态: {exc}",
             },
         }
@@ -128,7 +150,7 @@ def build_runtime_health(
             "status": status,
             "queueDepth": queue_depth,
             "consumerCount": consumer_count,
-            "stalePendingCount": stale_pending_count,
+            **work_snapshot,
             "message": message,
         },
     }
@@ -138,5 +160,5 @@ def get_runtime_health(vector_store, mysql) -> Dict[str, Any]:
     return build_runtime_health(
         vector_store=vector_store,
         queue_inspector=RabbitQueueInspector(),
-        stale_pending_counter=StalePendingCounter(mysql),
+        work_counter=DocumentWorkCounter(mysql),
     )

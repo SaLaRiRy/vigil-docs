@@ -43,7 +43,10 @@ public class SystemHealthService {
         consumer.put("status", "UNAVAILABLE");
         consumer.put("queueDepth", 0);
         consumer.put("consumerCount", 0);
+        consumer.put("pendingCount", 0);
+        consumer.put("processingCount", 0);
         consumer.put("stalePendingCount", 0);
+        consumer.put("maxProcessingAttempts", 0);
         consumer.put("message", message);
 
         Map<String, Object> result = new LinkedHashMap<>();
