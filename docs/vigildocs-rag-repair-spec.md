@@ -180,4 +180,4 @@ Verified evidence from the current workspace:
 - RabbitMQ currently reports one queued document-processing message and zero consumers; the corresponding document has zero processing attempts.
 - A deterministic FAISS fixture showed an exact match at distance `0.0` and an unrelated document at `2.47`, confirming that the current lower-bound similarity threshold is reversed.
 - The existing Java control-console logs for the slow admin-page interval were not persisted, so the exact cause of that delay needs browser request status and fresh backend logs before it is claimed as a Hikari or JVM stall.
-- The GitHub account configured for `gh` has an invalid token. Publish this specification as a GitHub Issue and apply `ready-for-agent` after `gh auth login -h github.com` is completed.
+- The specification was published as GitHub Issue #10 with the `ready-for-agent` label after GitHub CLI authentication was restored.

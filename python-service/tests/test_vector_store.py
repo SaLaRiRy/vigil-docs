@@ -154,3 +154,35 @@ def test_manifest_and_cosine_index_survive_reload(tmp_path):
     assert reloaded.search(
         "事务 ACID 是什么", similarity_threshold=0.7, use_rerank=False
     )[0].metadata["doc_id"] == 42
+
+
+def test_document_deletion_updates_manifest_counts(tmp_path):
+    index_path = tmp_path / "faiss_index"
+    embeddings = FixedEmbeddings(dimension=8)
+    manager = VectorStoreManager(
+        persist_directory=str(index_path),
+        use_milvus=False,
+        embeddings=embeddings,
+        reranker=None,
+    )
+    manager.add_documents(
+        [
+            Document(
+                page_content="事务 ACID 测试内容",
+                metadata={"doc_id": 42, "chunk_id": 420, "chunk_index": 0},
+            )
+        ]
+    )
+
+    manager.delete_document(42)
+
+    reloaded = VectorStoreManager(
+        persist_directory=str(index_path),
+        use_milvus=False,
+        embeddings=embeddings,
+        reranker=None,
+    )
+    health = reloaded.get_health()
+    assert health["status"] == "EMPTY"
+    assert health["document_count"] == 0
+    assert health["chunk_count"] == 0

@@ -130,3 +130,37 @@ def test_failed_validation_leaves_active_index_untouched(tmp_path):
 
     assert file_hash(target / "index.faiss") == original_hash
     assert list(tmp_path.glob("faiss_index.backup-*")) == []
+
+
+def test_repeated_apply_keeps_one_vector_per_source_chunk(tmp_path):
+    target = tmp_path / "faiss_index"
+    embeddings = FixedEmbeddings(dimension=8)
+    source = FakeSource([active_document(1, "事务 ACID 测试内容")])
+
+    rebuild_index(
+        source=source,
+        embeddings=embeddings,
+        target_dir=target,
+        apply=True,
+        embedding_provider="local",
+        embedding_model="fake-model",
+    )
+    second = rebuild_index(
+        source=source,
+        embeddings=embeddings,
+        target_dir=target,
+        apply=True,
+        embedding_provider="local",
+        embedding_model="fake-model",
+    )
+
+    rebuilt = VectorStoreManager(
+        persist_directory=str(target),
+        use_milvus=False,
+        embeddings=embeddings,
+        reranker=None,
+        embedding_provider="local",
+        embedding_model="fake-model",
+    )
+    assert second["built_chunk_count"] == 1
+    assert rebuilt.get_health()["chunk_count"] == 1

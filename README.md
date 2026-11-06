@@ -174,6 +174,7 @@ npm run build
 
 ## 文档
 
+- [RAG 索引检查与安全重建](docs/rag-index-repair.md)
 - [本机演示与验收](docs/mvp-demo.md)
 - [二次开发工作总结](docs/mvp-implementation-summary.md)
 - [二开评估与许可合规](二开评估与许可合规.md)

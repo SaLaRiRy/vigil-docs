@@ -268,9 +268,7 @@ class VectorStoreManager:
             "expected_dimension": self.embedding_dimension,
             "model": self.embedding_model,
             "provider": self.embedding_provider,
-            "document_count": len(self.vector_store.docstore._dict)
-            if self.vector_store is not None and hasattr(self.vector_store, "docstore")
-            else 0,
+            "document_count": self.manifest.document_count if self.manifest else 0,
             "chunk_count": int(self.vector_store.index.ntotal)
             if self.vector_store is not None and hasattr(self.vector_store, "index")
             else 0,
@@ -303,7 +301,6 @@ class VectorStoreManager:
             else:
                 texts = [document.page_content for document in documents]
                 vectors = self.embeddings.embed_documents(texts)
-                dimension = len(vectors[0]) if vectors else self.embedding_dimension
                 text_embeddings = zip(texts, vectors)
                 metadata = [document.metadata for document in documents]
                 ids = [self._document_id(document, index) for index, document in enumerate(documents)]
@@ -314,7 +311,7 @@ class VectorStoreManager:
                     ids=ids,
                     distance_strategy=DistanceStrategy.MAX_INNER_PRODUCT,
                 )
-                self._save_faiss(documents)
+                self._save_faiss()
                 config.logger.info(f"Created FAISS cosine index with {len(documents)} documents")
         else:
             # 添加文档到现有存储
@@ -332,7 +329,7 @@ class VectorStoreManager:
                     metadatas=metadata,
                     ids=ids,
                 )
-                self._save_faiss(documents)
+                self._save_faiss()
                 config.logger.info(f"Added {len(documents)} documents to FAISS cosine index")
 
     @staticmethod
@@ -365,7 +362,7 @@ class VectorStoreManager:
         )
         self._save_faiss()
 
-    def _save_faiss(self, added_documents: Optional[List[Document]] = None):
+    def _save_faiss(self):
         self.vector_store.save_local(self.persist_directory)
         documents = list(self.vector_store.docstore._dict.values())
         document_ids = {
@@ -574,7 +571,7 @@ class VectorStoreManager:
             if ids_to_delete:
                 # FAISS的delete方法可能不彻底，这里尝试删除
                 self.vector_store.delete(ids_to_delete)
-                self.vector_store.save_local(self.persist_directory)
+                self._save_faiss()
                 config.logger.info(f"Deleted {len(ids_to_delete)} chunks for doc_id {doc_id}")
 
                 # 建议：定期重建FAISS索引以提高效率
@@ -669,7 +666,11 @@ class VectorStoreManager:
 
 
 # 测试可以通过环境变量关闭全局实例，避免加载真实 embedding 模型和索引。
-if os.getenv("VECTOR_STORE_DISABLE_GLOBAL_INIT", "false").lower() == "true":
+if os.getenv("VECTOR_STORE_DISABLE_GLOBAL_INIT", "false").lower() in {
+    "1",
+    "true",
+    "yes",
+}:
     vector_store_manager = None
 else:
     vector_store_manager = VectorStoreManager()
