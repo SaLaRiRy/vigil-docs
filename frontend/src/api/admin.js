@@ -84,6 +84,7 @@ export const qaLogAPI = {
 
 export const systemHealthAPI = {
   get: () => api.get('/system-health'),
+  requeueStalePending: () => api.post('/knowledge/requeue-stale'),
 };
 
 export const approvalAPI = {

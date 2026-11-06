@@ -15,6 +15,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.nio.file.Path;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -94,6 +95,24 @@ class KnowledgeServiceImplTest {
         service.retryProcessing(44L);
 
         verify(publisher, org.mockito.Mockito.never()).publish(any(), any(), any(Integer.class));
+    }
+
+    @Test
+    void explicitRecoveryRequeuesOnlyStalePendingDocuments() {
+        KnowledgeServiceImpl service = service();
+        KnowledgeDoc document = new KnowledgeDoc();
+        document.setId(45L);
+        document.setStatus("PENDING");
+        document.setFilePath("D:/uploads/stale.txt");
+        when(processingRepository.findStalePendingIds(10, 100))
+                .thenReturn(List.of(45L));
+        when(docMapper.selectById(45L)).thenReturn(document);
+
+        int requeued = service.requeueStalePending();
+
+        assertThat(requeued).isEqualTo(1);
+        verify(processingRepository).prepareRetry(45L);
+        verify(publisher).publish(45L, "D:/uploads/stale.txt", 1);
     }
 
     private KnowledgeServiceImpl service() {

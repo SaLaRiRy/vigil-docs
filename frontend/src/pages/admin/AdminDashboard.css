@@ -124,6 +124,13 @@
   font-size: 13px;
 }
 
+.system-health-banner > .system-health-actions {
+  display: flex;
+  flex-direction: row;
+  gap: 8px;
+  align-items: center;
+}
+
 .system-health-banner.healthy {
   border-color: #b7eb8f;
   background: #f6ffed;

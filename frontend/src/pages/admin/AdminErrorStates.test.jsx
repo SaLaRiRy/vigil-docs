@@ -12,6 +12,7 @@ const getDashboardStats = vi.fn();
 const listUsers = vi.fn();
 const listDocuments = vi.fn();
 const getSystemHealth = vi.fn();
+const requeueStalePending = vi.fn();
 
 vi.mock('../../api/dashboard', () => ({
   getDashboardStats: (...args) => getDashboardStats(...args),
@@ -30,6 +31,7 @@ vi.mock('../../api/admin', () => ({
   },
   systemHealthAPI: {
     get: (...args) => getSystemHealth(...args),
+    requeueStalePending: (...args) => requeueStalePending(...args),
   },
 }));
 
@@ -44,6 +46,7 @@ describe('admin request states', () => {
     listUsers.mockReset();
     listDocuments.mockReset();
     getSystemHealth.mockReset();
+    requeueStalePending.mockReset();
   });
 
   it('shows a retryable dashboard error instead of an empty dashboard', async () => {
@@ -151,5 +154,37 @@ describe('admin request states', () => {
     });
     expect(listDocuments).toHaveBeenCalledTimes(2);
     vi.useRealTimers();
+  });
+
+  it('offers explicit recovery when stale pending work is reported', async () => {
+    localStorage.setItem('adminInfo', JSON.stringify({ username: 'admin', role: 'ADMIN' }));
+    getSystemHealth.mockResolvedValue({
+      data: {
+        vectorIndex: { status: 'HEALTHY' },
+        documentConsumer: {
+          status: 'HEALTHY',
+          queueDepth: 0,
+          consumerCount: 1,
+          stalePendingCount: 2,
+        },
+      },
+    });
+    requeueStalePending.mockResolvedValue({ data: 2 });
+
+    render(
+      <MemoryRouter initialEntries={['/admin/dashboard']}>
+        <Routes>
+          <Route path="/admin" element={<AdminDashboard />}>
+            <Route path="dashboard" element={<div>dashboard content</div>} />
+          </Route>
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: '重投滞留文档' }));
+
+    await waitFor(() => {
+      expect(requeueStalePending).toHaveBeenCalledTimes(1);
+    });
   });
 });

@@ -80,6 +80,11 @@ public class AdminController {
         knowledgeService.retryProcessing(id);
         return Result.success(null);
     }
+
+    @PostMapping("/knowledge/requeue-stale")
+    public Result<Integer> requeueStalePending() {
+        return Result.success(knowledgeService.requeueStalePending());
+    }
     
     // --- 问答日志管理 ---
     @GetMapping("/logs")

@@ -3,7 +3,7 @@ import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { systemHealthAPI } from '../../api/admin';
 import './AdminDashboard.css';
 
-function AdminHealthBanner({ health, error, loading, onRetry }) {
+function AdminHealthBanner({ health, error, loading, onRetry, onRequeue, requeueing }) {
   if (loading) {
     return (
       <div className="system-health-banner healthy" role="status">
@@ -38,9 +38,21 @@ function AdminHealthBanner({ health, error, loading, onRetry }) {
           <span>{health.vectorIndex?.message || health.documentConsumer?.message}</span>
         )}
       </div>
-      <button type="button" className="btn btn-default" onClick={onRetry}>
-        刷新状态
-      </button>
+      <div className="system-health-actions">
+        {(health?.documentConsumer?.stalePendingCount ?? 0) > 0 && (
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={onRequeue}
+            disabled={requeueing}
+          >
+            {requeueing ? '重投中…' : '重投滞留文档'}
+          </button>
+        )}
+        <button type="button" className="btn btn-default" onClick={onRetry}>
+          刷新状态
+        </button>
+      </div>
     </div>
   );
 }
@@ -53,6 +65,7 @@ export default function AdminDashboard() {
   const [systemHealth, setSystemHealth] = useState(null);
   const [healthError, setHealthError] = useState(null);
   const [healthLoading, setHealthLoading] = useState(true);
+  const [requeueingStale, setRequeueingStale] = useState(false);
 
   const loadSystemHealth = useCallback(async () => {
     setHealthLoading(true);
@@ -66,6 +79,18 @@ export default function AdminDashboard() {
       setHealthLoading(false);
     }
   }, []);
+
+  const requeueStaleDocuments = async () => {
+    setRequeueingStale(true);
+    try {
+      await systemHealthAPI.requeueStalePending();
+      await loadSystemHealth();
+    } catch {
+      setHealthError('滞留文档重投失败');
+    } finally {
+      setRequeueingStale(false);
+    }
+  };
 
   useEffect(() => {
     document.title = 'VigilDocs - 管理后台';
@@ -159,6 +184,8 @@ export default function AdminDashboard() {
           error={healthError}
           loading={healthLoading}
           onRetry={loadSystemHealth}
+          onRequeue={requeueStaleDocuments}
+          requeueing={requeueingStale}
         />
         <Outlet />
       </div>
