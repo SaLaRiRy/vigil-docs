@@ -40,6 +40,8 @@ export default function Dashboard() {
       const res = await getDashboardStats();
       if (res.code === 200) {
         setStats(res.data);
+      } else {
+        setError('加载仪表盘失败');
       }
     } catch (error) {
       console.error('Fetch stats failed', error);

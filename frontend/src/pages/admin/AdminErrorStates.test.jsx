@@ -55,6 +55,16 @@ describe('admin request states', () => {
     expect(screen.getByRole('button', { name: '重试' })).toBeInTheDocument();
   });
 
+  it('shows a retryable dashboard error for an unsuccessful business response', async () => {
+    getDashboardStats.mockResolvedValue({ code: 500, data: null });
+
+    render(<Dashboard />);
+
+    expect(await screen.findByText('加载仪表盘失败')).toBeInTheDocument();
+    expect(screen.queryByText('暂无数据')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '重试' })).toBeInTheDocument();
+  });
+
   it('shows a retryable user-list error instead of zero users', async () => {
     listUsers.mockRejectedValue(new Error('offline'));
 

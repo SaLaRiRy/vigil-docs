@@ -29,6 +29,7 @@ class DocumentProcessor:
         attempt = self.mysql.increment_processing_attempt(document_id)
         if self.mysql.mark_processing(document_id) != 1:
             return "state_changed"
+        vectors_mutated = False
         try:
             chunks = self.parser.parse(message["storagePath"])
             for index, chunk in enumerate(chunks):
@@ -38,9 +39,10 @@ class DocumentProcessor:
 
             # Replace this document's vectors before adding the new set so a
             # re-delivery cannot leave duplicate vectors behind.
+            vectors_mutated = True
             self.vector_store.delete_document(document_id)
             self.vector_store.add_documents(chunks)
-            self.mysql.complete_document(
+            completed = self.mysql.complete_document(
                 document_id,
                 [
                     {
@@ -50,8 +52,13 @@ class DocumentProcessor:
                     for index, chunk in enumerate(chunks)
                 ],
             )
+            if completed != 1:
+                self._remove_vectors(document_id)
+                return "state_changed"
             return "completed"
         except Exception as exc:
+            if vectors_mutated:
+                self._remove_vectors(document_id)
             safe_error = "Document could not be parsed or indexed"
             is_final = attempt >= self.max_attempts
             if is_final:
@@ -71,6 +78,15 @@ class DocumentProcessor:
                 final=is_final,
                 reason=str(exc),
             ) from exc
+
+    def _remove_vectors(self, document_id: int) -> None:
+        try:
+            self.vector_store.delete_document(document_id)
+        except Exception:
+            logger.exception(
+                "Unable to remove vectors after processing document %s failed",
+                document_id,
+            )
 
 
 class ProcessingAttemptFailed(RuntimeError):
