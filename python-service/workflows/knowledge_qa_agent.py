@@ -3,7 +3,7 @@ from agent.orchestrator import Orchestrator
 from agent.state import AgentState
 from agent.events import EventBus, event_bus
 from workflows.retrieval_agent import RetrievalAgent
-from core.vector_store import vector_store
+from core.vector_store import vector_store as default_vector_store
 from core.vector_index import VectorIndexUnavailableError
 from core.llm import LLMService
 from tools.registry import tool_registry
@@ -27,7 +27,7 @@ class KnowledgeQAAgent:
         self.orchestrator = orchestrator or Orchestrator()
         self.event_bus = event_bus
         self.retrieval_agent = retrieval_agent or RetrievalAgent()
-        self.vector_store = vector_store or globals()["vector_store"]
+        self.vector_store = vector_store or default_vector_store
         self.llm_service = llm_service or LLMService()
         self._router = router
         self._reasoning_agent = None

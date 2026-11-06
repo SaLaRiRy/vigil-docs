@@ -192,15 +192,21 @@ export default function KnowledgeManagement() {
         <div className="card-header">
           <h2>文档列表</h2>
           <span className="total-info">
-            {loading || error ? '—' : `共 ${documents.length} 个文档`}
+            {loading || (error && documents.length === 0)
+              ? '—'
+              : `共 ${documents.length} 个文档`}
           </span>
         </div>
+
+        {error && documents.length > 0 && (
+          <AdminRequestError message={error} onRetry={loadDocuments} />
+        )}
 
         {loading ? (
           <div style={{ textAlign: 'center', padding: '40px', color: '#999' }}>
             加载中...
           </div>
-        ) : error ? (
+        ) : error && documents.length === 0 ? (
           <AdminRequestError message={error} onRetry={loadDocuments} />
         ) : documents.length === 0 ? (
           <AdminEmptyState message="暂无文档，请先上传" />

@@ -152,12 +152,13 @@ export default function Dashboard() {
     }
   };
 
-  if (loading) return <div className="loading">加载中...</div>;
-  if (error) return <AdminRequestError message={error} onRetry={fetchStats} />;
+  if (loading && !stats) return <div className="loading">加载中...</div>;
+  if (error && !stats) return <AdminRequestError message={error} onRetry={fetchStats} />;
   if (!stats) return <div className="error">暂无数据</div>;
 
   return (
     <div className="dashboard-container">
+      {error && <AdminRequestError message={error} onRetry={fetchStats} />}
       <h2 className="page-title">仪表盘</h2>
       
       {/* 核心指标卡片 */}

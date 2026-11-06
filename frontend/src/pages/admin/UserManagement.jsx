@@ -65,15 +65,19 @@ export default function UserManagement() {
         <div className="card-header">
           <h2>用户列表</h2>
           <span className="total-info">
-            {loading || error ? '—' : `共 ${total} 个用户`}
+            {loading || (error && total === 0) ? '—' : `共 ${total} 个用户`}
           </span>
         </div>
+
+        {error && users.length > 0 && (
+          <AdminRequestError message={error} onRetry={loadUsers} />
+        )}
 
         {loading ? (
           <div style={{ textAlign: 'center', padding: '40px', color: '#999' }}>
             加载中...
           </div>
-        ) : error ? (
+        ) : error && users.length === 0 ? (
           <AdminRequestError message={error} onRetry={loadUsers} />
         ) : users.length === 0 ? (
           <AdminEmptyState message="暂无用户数据" />
