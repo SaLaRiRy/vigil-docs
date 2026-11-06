@@ -5,7 +5,7 @@ import { AdminEmptyState, AdminRequestError } from './AdminRequestState';
 
 export default function KnowledgeManagement() {
   const [documents, setDocuments] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [selectedFile, setSelectedFile] = useState(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -19,8 +19,10 @@ export default function KnowledgeManagement() {
     loadDocuments();
   }, []);
 
-  const loadDocuments = async () => {
-    setLoading(true);
+  const loadDocuments = async ({ showLoading = true } = {}) => {
+    if (showLoading) {
+      setLoading(true);
+    }
     setError(null);
     try {
       // 知识库列表目前后端返回的是 List<KnowledgeDoc>，不是分页对象
@@ -36,6 +38,20 @@ export default function KnowledgeManagement() {
       setLoading(false);
     }
   };
+
+  const hasNonTerminalDocument = documents.some(
+    (doc) => doc.status === 'PENDING' || doc.status === 'PROCESSING',
+  );
+
+  useEffect(() => {
+    if (!hasNonTerminalDocument) {
+      return undefined;
+    }
+    const timer = window.setInterval(() => {
+      loadDocuments({ showLoading: false });
+    }, 2000);
+    return () => window.clearInterval(timer);
+  }, [hasNonTerminalDocument]);
 
   const handleFileSelect = (e) => {
     const file = e.target.files[0];

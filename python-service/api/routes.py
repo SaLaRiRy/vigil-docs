@@ -277,7 +277,10 @@ async def ask_question(request: ChatRequest):
             response = {
                 "answer": result.get("answer", ""),
                 "sources": result.get("sources", []),
-                "task_type": result.get("task_type", "unknown")
+                "task_type": result.get("task_type", "unknown"),
+                "has_sources": result.get("has_sources", False),
+                "error": result.get("error", False),
+                "error_code": result.get("error_code"),
             }
         
         logger.info(f"Response generated successfully, task_type: {response.get('task_type')}")

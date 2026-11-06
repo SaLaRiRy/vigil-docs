@@ -1,4 +1,6 @@
 from langchain_core.documents import Document
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
 from core.vector_index import VectorIndexUnavailableError
 from workflows.knowledge_qa_agent import KnowledgeQAAgent
@@ -148,3 +150,31 @@ def test_stream_reports_unavailable_index_without_llm_fallback():
 
     assert '"error_code": "INDEX_UNAVAILABLE"' in events[-1]
     assert llm.calls == 0
+
+
+def test_question_api_exposes_an_unavailable_index_to_clients(monkeypatch):
+    import api.routes as routes
+
+    agent = KnowledgeQAAgent(
+        vector_store=FailingVectorStore(),
+        llm_service=RecordingLLM(),
+        router=SimpleRouter(),
+    )
+
+    class UnavailableRouter:
+        def route(self, **kwargs):
+            return agent.ask(kwargs["input_text"])
+
+    monkeypatch.setattr(routes, "router_agent", UnavailableRouter())
+    app = FastAPI()
+    app.include_router(routes.router, prefix="/api")
+
+    response = TestClient(app).post(
+        "/api/ask",
+        json={"question": "事务 ACID 是什么"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["error"] is True
+    assert response.json()["error_code"] == "INDEX_UNAVAILABLE"
+    assert response.json()["sources"] == []
