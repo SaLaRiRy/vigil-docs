@@ -34,7 +34,11 @@ class FakeDocumentWorkCounter:
         processing=0,
         stale=0,
         max_attempts=0,
+        stale_document_ids=None,
     ):
+        self.stale_document_ids = (
+            list(stale_document_ids) if stale_document_ids is not None else []
+        )
         self.values = {
             "pendingCount": pending,
             "processingCount": processing,
@@ -44,6 +48,9 @@ class FakeDocumentWorkCounter:
 
     def snapshot(self):
         return dict(self.values)
+
+    def list_ids(self):
+        return list(self.stale_document_ids)
 
 
 def test_unavailable_index_blocks_consumption():
@@ -60,6 +67,7 @@ def test_queued_messages_without_consumers_are_degraded():
             pending=1,
             stale=1,
             max_attempts=0,
+            stale_document_ids=[1],
         ),
     )
 
@@ -72,6 +80,8 @@ def test_queued_messages_without_consumers_are_degraded():
         "processingCount": 0,
         "stalePendingCount": 1,
         "maxProcessingAttempts": 0,
+        "stalePendingDocumentIds": [1],
+        "waitingForConsumer": True,
         "message": "有排队消息但 consumer 未运行",
     }
 
@@ -85,3 +95,16 @@ def test_running_consumer_with_empty_queue_is_healthy():
 
     assert health["vectorIndex"]["status"] == "EMPTY"
     assert health["documentConsumer"]["status"] == "HEALTHY"
+
+
+def test_stale_pending_document_ids_remain_visible():
+    health = build_runtime_health(
+        vector_store=FakeVectorStore("HEALTHY"),
+        queue_inspector=FakeQueueInspector(messages=0, consumers=1),
+        work_counter=FakeDocumentWorkCounter(
+            stale=1,
+            stale_document_ids=[47],
+        ),
+    )
+
+    assert health["documentConsumer"]["stalePendingDocumentIds"] == [47]

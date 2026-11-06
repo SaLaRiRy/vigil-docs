@@ -101,13 +101,20 @@ def process_document_delivery(
 ) -> bool:
     """Process one delivery only while the vector index is ready."""
     if not index_ready_for_consumption(vector_store):
-        health = vector_store.get_health()
+        try:
+            health = vector_store.get_health()
+        except Exception:
+            health = {
+                "status": "UNAVAILABLE",
+                "message": "health check raised an exception",
+            }
         logging.error(
             "Document delivery requeued: vector index is %s (%s)",
             health.get("status"),
             health.get("message"),
         )
         channel.basic_nack(delivery_tag=delivery_tag, requeue=True)
+        channel.stop_consuming()
         return False
 
     try:
@@ -133,6 +140,7 @@ def make_connection() -> pika.BlockingConnection:
 
 def main() -> None:
     while True:
+        connection = None
         try:
             connection = make_connection()
             channel = connection.channel()
@@ -180,6 +188,9 @@ def main() -> None:
         except Exception:
             logging.exception("Document consumer disconnected; retrying")
             time.sleep(3)
+        finally:
+            if connection is not None and connection.is_open:
+                connection.close()
 
 
 if __name__ == "__main__":

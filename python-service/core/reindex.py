@@ -8,6 +8,7 @@ from typing import Callable, Dict, Iterable, List, Optional
 from langchain_core.documents import Document
 from langchain_core.embeddings import Embeddings
 
+from core.vector_index import INDEX_SCHEMA_VERSION
 from core.vector_store import VectorStoreManager
 
 
@@ -146,6 +147,7 @@ def rebuild_index(
     }
     report = {
         "mode": "apply" if apply else "dry-run",
+        "status": "building" if apply else "planned",
         "target_directory": str(target),
         "embedding_provider": embedding_provider,
         "embedding_model": embedding_model,
@@ -159,6 +161,15 @@ def rebuild_index(
     }
     if embeddings is not None:
         report["embedding_dimension"] = len(embeddings.embed_query("dimension probe"))
+    report["target_manifest"] = {
+        "schema_version": INDEX_SCHEMA_VERSION,
+        "embedding_provider": embedding_provider,
+        "embedding_model": embedding_model,
+        "embedding_dimension": report.get("embedding_dimension"),
+        "document_count": len(active_document_ids),
+        "chunk_count": len(documents),
+        "source_policy": "active_completed",
+    }
     if not apply:
         return report
     if embeddings is None:

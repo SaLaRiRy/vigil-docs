@@ -14,12 +14,16 @@ class RecordingChannel:
     def __init__(self):
         self.acknowledged = []
         self.requeued = []
+        self.stopped = 0
 
     def basic_ack(self, delivery_tag):
         self.acknowledged.append(delivery_tag)
 
     def basic_nack(self, delivery_tag, requeue):
         self.requeued.append((delivery_tag, requeue))
+
+    def stop_consuming(self):
+        self.stopped += 1
 
 
 class RecordingProcessor:
@@ -46,3 +50,4 @@ def test_unavailable_index_requeues_without_processing_the_document():
     assert processor.calls == 0
     assert channel.acknowledged == []
     assert channel.requeued == [(17, True)]
+    assert channel.stopped == 1
