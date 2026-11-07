@@ -167,13 +167,14 @@ npm run build
 
 当前基线：
 
-- Python：130 个测试通过。
-- Java：10 个测试通过。
-- 前端 production build 通过。
+- Python：176 个测试通过。
+- Java：13 个测试通过。
+- 前端：9 个测试通过，production build 通过。
 - GitHub Actions 包含 Python、Java 和 Frontend 三个任务。
 
 ## 文档
 
+- [RAG 索引检查与安全重建](docs/rag-index-repair.md)
 - [本机演示与验收](docs/mvp-demo.md)
 - [二次开发工作总结](docs/mvp-implementation-summary.md)
 - [二开评估与许可合规](二开评估与许可合规.md)

@@ -2,10 +2,12 @@ import React, { useEffect, useState, useRef } from 'react';
 import { getDashboardStats } from '../../api/dashboard';
 import * as echarts from 'echarts';
 import './Dashboard.css';
+import { AdminRequestError } from './AdminRequestState';
 
 export default function Dashboard() {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const pieChartRef = useRef(null);
   const trendChartRef = useRef(null);
   const chartInstances = useRef([]);
@@ -32,13 +34,18 @@ export default function Dashboard() {
   }, [stats]);
 
   const fetchStats = async () => {
+    setLoading(true);
+    setError(null);
     try {
       const res = await getDashboardStats();
       if (res.code === 200) {
         setStats(res.data);
+      } else {
+        setError('加载仪表盘失败');
       }
     } catch (error) {
       console.error('Fetch stats failed', error);
+      setError('加载仪表盘失败');
     } finally {
       setLoading(false);
     }
@@ -147,11 +154,13 @@ export default function Dashboard() {
     }
   };
 
-  if (loading) return <div className="loading">加载中...</div>;
+  if (loading && !stats) return <div className="loading">加载中...</div>;
+  if (error && !stats) return <AdminRequestError message={error} onRetry={fetchStats} />;
   if (!stats) return <div className="error">暂无数据</div>;
 
   return (
     <div className="dashboard-container">
+      {error && <AdminRequestError message={error} onRetry={fetchStats} />}
       <h2 className="page-title">仪表盘</h2>
       
       {/* 核心指标卡片 */}

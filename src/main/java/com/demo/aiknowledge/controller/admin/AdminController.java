@@ -80,7 +80,7 @@ public class AdminController {
         knowledgeService.retryProcessing(id);
         return Result.success(null);
     }
-    
+
     // --- 问答日志管理 ---
     @GetMapping("/logs")
     public Result<IPage<QaLog>> listLogs(@RequestParam(defaultValue = "1") Integer page,

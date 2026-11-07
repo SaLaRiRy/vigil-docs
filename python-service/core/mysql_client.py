@@ -29,7 +29,8 @@ class MySQLClient:
                 password=self.password,
                 use_unicode=True,
                 charset='utf8mb4',
-                time_zone='+08:00'
+                time_zone='+08:00',
+                autocommit=True,
             )
             if self.connection.is_connected():
                 logger.info("Successfully connected to MySQL database")
@@ -110,7 +111,13 @@ class MySQLClient:
             logger.error(f"Error getting chunk count: {e}")
             return 0
 
-    def fetch_one(self, sql: str, params: tuple = None) -> Dict[str, Any]:
+    def fetch_one(
+        self,
+        sql: str,
+        params: tuple = None,
+        *,
+        raise_on_error: bool = False,
+    ) -> Dict[str, Any]:
         """执行查询并返回单行结果"""
         if not self.connection or not self.connection.is_connected():
             self.connect()
@@ -129,9 +136,17 @@ class MySQLClient:
         
         except Error as e:
             logger.error(f"Error fetching one: {e}")
+            if raise_on_error:
+                raise
             return None
 
-    def fetch_all(self, sql: str, params: tuple = None) -> List[Dict[str, Any]]:
+    def fetch_all(
+        self,
+        sql: str,
+        params: tuple = None,
+        *,
+        raise_on_error: bool = False,
+    ) -> List[Dict[str, Any]]:
         """执行查询并返回所有结果"""
         if not self.connection or not self.connection.is_connected():
             self.connect()
@@ -150,6 +165,8 @@ class MySQLClient:
         
         except Error as e:
             logger.error(f"Error fetching all: {e}")
+            if raise_on_error:
+                raise
             return []
 
     def execute(self, sql: str, params: tuple = None) -> int:
@@ -215,7 +232,12 @@ class MySQLClient:
                 (doc_id,),
             )
             row = cursor.fetchone()
-            if not row or row[0] in ("DELETED", "WAITING_APPROVAL"):
+            if not row or row[0] not in (
+                "PENDING",
+                "PROCESSING",
+                "COMPLETED",
+                "FAILED",
+            ):
                 self.connection.rollback()
                 return 0
             cursor.execute("DELETE FROM knowledge_chunk WHERE doc_id = %s", (doc_id,))
@@ -248,7 +270,10 @@ class MySQLClient:
                 (doc_id,),
             )
             self.connection.commit()
-            return cursor.rowcount
+            # The transaction completed with the document still eligible for
+            # processing. A later UPDATE may legitimately affect zero rows when
+            # it re-writes the same NULL/0 metadata values.
+            return 1
         except Exception:
             self.connection.rollback()
             raise

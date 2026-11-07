@@ -1,13 +1,15 @@
 import { useState, useEffect } from 'react';
 import { userManagementAPI } from '../../api/admin';
 import './AdminDashboard.css';
+import { AdminEmptyState, AdminRequestError } from './AdminRequestState';
 
 export default function UserManagement() {
   const [users, setUsers] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize] = useState(10);
   const [total, setTotal] = useState(0);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     loadUsers();
@@ -15,6 +17,7 @@ export default function UserManagement() {
 
   const loadUsers = async () => {
     setLoading(true);
+    setError(null);
     try {
       const response = await userManagementAPI.listUsers(currentPage, pageSize);
       // 分页接口返回的数据结构通常是 data.records 和 data.total
@@ -22,7 +25,7 @@ export default function UserManagement() {
       setTotal(response.data.total || 0);
     } catch (err) {
       console.error('加载用户列表失败:', err);
-      // alert('加载用户列表失败');
+      setError('加载用户列表失败');
     } finally {
       setLoading(false);
     }
@@ -61,17 +64,23 @@ export default function UserManagement() {
       <div className="admin-card">
         <div className="card-header">
           <h2>用户列表</h2>
-          <span className="total-info">共 {total} 个用户</span>
+          <span className="total-info">
+            {loading || (error && total === 0) ? '—' : `共 ${total} 个用户`}
+          </span>
         </div>
+
+        {error && users.length > 0 && (
+          <AdminRequestError message={error} onRetry={loadUsers} />
+        )}
 
         {loading ? (
           <div style={{ textAlign: 'center', padding: '40px', color: '#999' }}>
             加载中...
           </div>
+        ) : error && users.length === 0 ? (
+          <AdminRequestError message={error} onRetry={loadUsers} />
         ) : users.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '40px', color: '#999' }}>
-            暂无用户数据
-          </div>
+          <AdminEmptyState message="暂无用户数据" />
         ) : (
           <>
             <table className="admin-table">

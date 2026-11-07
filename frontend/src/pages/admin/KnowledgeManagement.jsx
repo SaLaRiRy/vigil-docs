@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { knowledgeManagementAPI } from '../../api/admin';
 import './AdminDashboard.css';
+import { AdminEmptyState, AdminRequestError } from './AdminRequestState';
 
 export default function KnowledgeManagement() {
   const [documents, setDocuments] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [selectedFile, setSelectedFile] = useState(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -12,13 +13,20 @@ export default function KnowledgeManagement() {
   const [showMessageModal, setShowMessageModal] = useState(false);
   const [messageModalContent, setMessageModalContent] = useState('');
   const [messageModalTitle, setMessageModalTitle] = useState('提示');
+  const [error, setError] = useState(null);
+  const documentsRequestInFlight = useRef(false);
 
   useEffect(() => {
     loadDocuments();
   }, []);
 
-  const loadDocuments = async () => {
-    setLoading(true);
+  const loadDocuments = async ({ showLoading = true } = {}) => {
+    if (documentsRequestInFlight.current) return;
+    documentsRequestInFlight.current = true;
+    if (showLoading) {
+      setLoading(true);
+    }
+    setError(null);
     try {
       // 知识库列表目前后端返回的是 List<KnowledgeDoc>，不是分页对象
       // 如果后端改为了分页，这里需要调整。目前假设是 List。
@@ -28,11 +36,26 @@ export default function KnowledgeManagement() {
       // 统计数量直接取 list.length
     } catch (err) {
       console.error('加载文档列表失败:', err);
-      // alert('加载文档列表失败');
+      setError('加载文档列表失败');
     } finally {
+      documentsRequestInFlight.current = false;
       setLoading(false);
     }
   };
+
+  const hasNonTerminalDocument = documents.some(
+    (doc) => doc.status === 'PENDING' || doc.status === 'PROCESSING',
+  );
+
+  useEffect(() => {
+    if (!hasNonTerminalDocument) {
+      return undefined;
+    }
+    const timer = window.setInterval(() => {
+      loadDocuments({ showLoading: false });
+    }, 2000);
+    return () => window.clearInterval(timer);
+  }, [hasNonTerminalDocument]);
 
   const handleFileSelect = (e) => {
     const file = e.target.files[0];
@@ -172,17 +195,25 @@ export default function KnowledgeManagement() {
       <div className="admin-card">
         <div className="card-header">
           <h2>文档列表</h2>
-          <span className="total-info">共 {documents.length} 个文档</span>
+          <span className="total-info">
+            {loading || (error && documents.length === 0)
+              ? '—'
+              : `共 ${documents.length} 个文档`}
+          </span>
         </div>
+
+        {error && documents.length > 0 && (
+          <AdminRequestError message={error} onRetry={loadDocuments} />
+        )}
 
         {loading ? (
           <div style={{ textAlign: 'center', padding: '40px', color: '#999' }}>
             加载中...
           </div>
+        ) : error && documents.length === 0 ? (
+          <AdminRequestError message={error} onRetry={loadDocuments} />
         ) : documents.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '40px', color: '#999' }}>
-            暂无文档，请先上传
-          </div>
+          <AdminEmptyState message="暂无文档，请先上传" />
         ) : (
           <table className="admin-table">
             <thead>

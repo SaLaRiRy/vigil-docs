@@ -42,6 +42,7 @@ class FakeMySQL:
 
     def complete_document(self, doc_id, chunks):
         self.completed_chunks = chunks
+        return 1
 
     def mark_failed(self, doc_id, safe_error, dead_lettered):
         self.failed = (safe_error, dead_lettered)
@@ -57,6 +58,11 @@ class FakeVectorStore:
 
     def delete_document(self, doc_id):
         self.deleted.append(doc_id)
+        self.added = [
+            chunk
+            for chunk in self.added
+            if chunk.metadata.get("doc_id") != doc_id
+        ]
 
     def add_documents(self, chunks):
         self.added.extend(chunks)
@@ -127,3 +133,42 @@ def test_deleted_document_is_an_idempotent_no_op():
     )
 
     assert processor.process(document_message()) == "already_deleted"
+
+
+def test_database_completion_failure_removes_new_vectors():
+    class CompletionFailingMySQL(FakeMySQL):
+        def complete_document(self, doc_id, chunks):
+            raise RuntimeError("database unavailable")
+
+    mysql = CompletionFailingMySQL()
+    vectors = FakeVectorStore()
+    processor = DocumentProcessor(
+        FakeParser([FakeChunk("new content")]),
+        mysql,
+        vectors,
+    )
+
+    with pytest.raises(ProcessingAttemptFailed):
+        processor.process(document_message())
+
+    assert vectors.added == []
+    assert vectors.deleted == [7, 7]
+    assert mysql.retry_pending == "Document could not be parsed or indexed"
+
+
+def test_concurrent_deletion_during_completion_removes_new_vectors():
+    class ConcurrentDeletionMySQL(FakeMySQL):
+        def complete_document(self, doc_id, chunks):
+            return 0
+
+    mysql = ConcurrentDeletionMySQL()
+    vectors = FakeVectorStore()
+    processor = DocumentProcessor(
+        FakeParser([FakeChunk("new content")]),
+        mysql,
+        vectors,
+    )
+
+    assert processor.process(document_message()) == "state_changed"
+    assert vectors.added == []
+    assert vectors.deleted == [7, 7]

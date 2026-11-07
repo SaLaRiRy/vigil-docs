@@ -116,6 +116,8 @@ class CitationIntegrator:
         for i, citation in enumerate(citations):
             source = {
                 "index": i + 1,
+                "doc_id": citation.document_id,
+                "doc": citation.doc_title or f"文档{citation.document_id}",
                 "document_id": citation.document_id,
                 "chunk_id": citation.chunk_id,
                 "content": citation.content,

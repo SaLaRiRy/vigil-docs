@@ -1,11 +1,23 @@
 import os
 import shutil
 from typing import List, Optional, Dict, Any
+import faiss
 from langchain_community.vectorstores import FAISS
+from langchain_community.vectorstores.utils import DistanceStrategy
+from langchain_community.docstore.in_memory import InMemoryDocstore
 from langchain_community.embeddings import DashScopeEmbeddings, HuggingFaceEmbeddings
 from langchain_core.documents import Document
 from core.reranker import create_reranker, BaseReranker
 from core.config import config
+from core.vector_index import (
+    DEFAULT_SIMILARITY_THRESHOLD,
+    IndexManifest,
+    NormalizedEmbeddings,
+    VectorIndexUnavailableError,
+    load_manifest,
+    manifest_path,
+    write_manifest,
+)
 
 # pymilvus 和 Milvus 是可选依赖，仅在使用 Milvus 时需要
 try:
@@ -16,8 +28,54 @@ except ImportError:
     MILVUS_AVAILABLE = False
 
 
+_UNSET = object()
+
+
+def create_embeddings():
+    """Build the configured embedding client and its manifest identity."""
+    configured_embedding_model = config.EMBEDDING_MODEL.lower()
+    if configured_embedding_model == "local":
+        local_model = config.LOCAL_EMBEDDING_MODEL
+        config.logger.info(f"Using local HuggingFace Embeddings ({local_model})")
+        return (
+            HuggingFaceEmbeddings(model_name=local_model),
+            "local",
+            local_model,
+        )
+
+    api_key = config.DASHSCOPE_API_KEY
+    if api_key:
+        config.logger.info("Using DashScope Embeddings (text-embedding-v1)")
+        return (
+            DashScopeEmbeddings(
+                model="text-embedding-v1",
+                dashscope_api_key=api_key,
+            ),
+            "dashscope",
+            "text-embedding-v1",
+        )
+
+    config.logger.warning(
+        "DASHSCOPE_API_KEY not found. Falling back to local HuggingFace Embeddings."
+    )
+    return (
+        HuggingFaceEmbeddings(model_name=config.LOCAL_EMBEDDING_MODEL),
+        "local",
+        config.LOCAL_EMBEDDING_MODEL,
+    )
+
+
 class VectorStoreManager:
-    def __init__(self, persist_directory=None, use_milvus=None):
+    def __init__(
+        self,
+        persist_directory=None,
+        use_milvus=None,
+        *,
+        embeddings=None,
+        reranker=_UNSET,
+        embedding_provider=None,
+        embedding_model=None,
+    ):
         """
         初始化向量存储管理器
 
@@ -34,30 +92,28 @@ class VectorStoreManager:
         # 从环境变量读取集合名称，默认值为ai_knowledge_collection
         self.collection_name = config.VECTOR_STORE_COLLECTION_NAME
         self.vector_store = None
+        self.manifest = None
+        self._embedding_dimension_value = None
+        self._manifest_mtime_ns = None
+        self._health_status = "UNAVAILABLE"
+        self._health_message = "Vector store has not been initialized"
 
         # 初始化Reranker
-        self._init_reranker()
-
-        # 根据 EMBEDDING_MODEL 配置选择 Embedding 模型
-        embedding_model = config.EMBEDDING_MODEL.lower()
-
-        if embedding_model == "local":
-            # 使用本地中文 Embedding 模型（如 BAAI/bge-small-zh-v1.5）
-            local_model = config.LOCAL_EMBEDDING_MODEL
-            config.logger.info(f"Using local HuggingFace Embeddings ({local_model})")
-            self.embeddings = HuggingFaceEmbeddings(model_name=local_model)
+        if reranker is _UNSET:
+            self._init_reranker()
         else:
-            # 默认使用阿里云 DashScope Embeddings (text-embedding-v1)
-            api_key = config.DASHSCOPE_API_KEY
-            if api_key:
-                config.logger.info("Using DashScope Embeddings (text-embedding-v1)")
-                self.embeddings = DashScopeEmbeddings(
-                    model="text-embedding-v1",
-                    dashscope_api_key=api_key
-                )
-            else:
-                config.logger.warning("DASHSCOPE_API_KEY not found. Falling back to local HuggingFace Embeddings.")
-                self.embeddings = HuggingFaceEmbeddings(model_name=config.LOCAL_EMBEDDING_MODEL)
+            self.reranker = reranker
+
+        if embeddings is not None:
+            base_embeddings = embeddings
+            self.embedding_provider = embedding_provider or config.EMBEDDING_MODEL.lower()
+            self.embedding_model = embedding_model or config.LOCAL_EMBEDDING_MODEL
+        else:
+            base_embeddings, detected_provider, detected_model = create_embeddings()
+            self.embedding_provider = embedding_provider or detected_provider
+            self.embedding_model = embedding_model or detected_model
+
+        self.embeddings = NormalizedEmbeddings(base_embeddings)
 
         # 如果 pymilvus 未安装，强制使用 FAISS
         if self.use_milvus and not MILVUS_AVAILABLE:
@@ -128,20 +184,131 @@ class VectorStoreManager:
         """
         config.logger.info("Using FAISS vector store (fallback mode)")
         if os.path.exists(self.persist_directory):
+            self._manifest_mtime_ns = self._get_manifest_mtime()
             try:
                 self.vector_store = FAISS.load_local(self.persist_directory, self.embeddings, allow_dangerous_deserialization=True)
                 config.logger.info(f"Loaded existing FAISS index from {self.persist_directory}")
             except Exception as e:
                 config.logger.error(f"Error loading existing FAISS index: {e}")
-                config.logger.info("This may be caused by embedding model change (dimension mismatch). Re-initializing empty FAISS vector store...")
-                # Backup old index just in case
-                if os.path.exists(self.persist_directory + "_backup"):
-                    shutil.rmtree(self.persist_directory + "_backup")
-                shutil.move(self.persist_directory, self.persist_directory + "_backup")
                 self.vector_store = None
+                self._health_status = "UNAVAILABLE"
+                self._health_message = f"无法加载向量索引: {e}"
+                return
         else:
             self.vector_store = None
+            self._health_status = "EMPTY"
+            self._health_message = "尚未创建向量索引"
+            self._manifest_mtime_ns = None
             config.logger.info("No existing FAISS index found, will create new one when needed")
+            return
+
+        try:
+            self.manifest = load_manifest(self.persist_directory)
+        except Exception as e:
+            self._health_status = "UNAVAILABLE"
+            self._health_message = f"索引 manifest 无效: {e}"
+            return
+
+        if self.manifest is None:
+            self._health_status = "UNAVAILABLE"
+            self._health_message = "索引缺少 manifest，需要重新构建"
+            return
+
+        expected_dimension = self.embedding_dimension
+        actual_dimension = int(self.vector_store.index.d)
+        if not self.manifest.is_compatible(
+            embedding_provider=self.embedding_provider,
+            embedding_model=self.embedding_model,
+            embedding_dimension=expected_dimension,
+        ):
+            self._health_status = "UNAVAILABLE"
+            self._health_message = (
+                f"索引与当前 embedding 不兼容 "
+                f"(manifest: {self.manifest.embedding_model}/{self.manifest.embedding_dimension}, "
+                f"current: {self.embedding_model}/{expected_dimension})"
+            )
+            return
+
+        if actual_dimension != expected_dimension:
+            self._health_status = "UNAVAILABLE"
+            self._health_message = (
+                f"索引维度 {actual_dimension} 与 embedding 维度 "
+                f"{expected_dimension} 不匹配"
+            )
+            return
+
+        if not isinstance(self.vector_store.index, faiss.IndexFlatIP):
+            self._health_status = "UNAVAILABLE"
+            self._health_message = "索引不是 cosine/inner-product 度量，需要重新构建"
+            return
+
+        if int(self.vector_store.index.ntotal) == 0:
+            self._health_status = "EMPTY"
+            self._health_message = "向量索引为空"
+        else:
+            self._health_status = "HEALTHY"
+            self._health_message = "向量索引可检索"
+
+    def _get_manifest_mtime(self) -> Optional[int]:
+        try:
+            return manifest_path(self.persist_directory).stat().st_mtime_ns
+        except FileNotFoundError:
+            return None
+
+    def _refresh_faiss_if_changed(self):
+        if self.use_milvus:
+            return
+        current_mtime = self._get_manifest_mtime()
+        if current_mtime == self._manifest_mtime_ns:
+            return
+        config.logger.info("Detected external vector index update; reloading")
+        self._init_faiss()
+
+    @property
+    def embedding_dimension(self) -> int:
+        if self._embedding_dimension_value is None:
+            vector = self.embeddings.embed_query("embedding dimension probe")
+            self._embedding_dimension_value = len(vector)
+        return self._embedding_dimension_value
+
+    def get_health(self) -> Dict[str, Any]:
+        self._refresh_faiss_if_changed()
+        if self.use_milvus:
+            status = "HEALTHY" if self.vector_store is not None else "UNAVAILABLE"
+            return {
+                "status": status,
+                "message": "Milvus 已连接" if status == "HEALTHY" else "Milvus 不可用",
+                "backend": "milvus",
+                "model": self.embedding_model,
+                "provider": self.embedding_provider,
+            }
+
+        actual_dimension = None
+        indexed_document_ids = []
+        if self.vector_store is not None and hasattr(self.vector_store, "index"):
+            actual_dimension = int(self.vector_store.index.d)
+            indexed_document_ids = sorted(
+                {
+                    document.metadata.get("doc_id")
+                    for document in self.vector_store.docstore._dict.values()
+                    if document.metadata.get("doc_id") is not None
+                }
+            )
+        return {
+            "status": self._health_status,
+            "message": self._health_message,
+            "backend": "faiss",
+            "dimension": actual_dimension,
+            "expected_dimension": self.embedding_dimension,
+            "model": self.embedding_model,
+            "provider": self.embedding_provider,
+            "document_count": self.manifest.document_count if self.manifest else 0,
+            "chunk_count": int(self.vector_store.index.ntotal)
+            if self.vector_store is not None and hasattr(self.vector_store, "index")
+            else 0,
+            "source_policy": self.manifest.source_policy if self.manifest else None,
+            "indexedDocumentIds": indexed_document_ids,
+        }
 
     def add_documents(self, documents: List[Document]):
         """
@@ -149,6 +316,9 @@ class VectorStoreManager:
         """
         if not documents:
             return
+        health = self.get_health()
+        if health["status"] == "UNAVAILABLE":
+            raise VectorIndexUnavailableError(health["message"])
 
         if self.vector_store is None:
             if self.use_milvus:
@@ -167,10 +337,20 @@ class VectorStoreManager:
                 )
                 config.logger.info(f"Created Milvus collection '{self.collection_name}' with {len(documents)} documents")
             else:
-                # FAISS
-                self.vector_store = FAISS.from_documents(documents, self.embeddings)
-                self.vector_store.save_local(self.persist_directory)
-                config.logger.info(f"Created FAISS index with {len(documents)} documents")
+                texts = [document.page_content for document in documents]
+                vectors = self.embeddings.embed_documents(texts)
+                text_embeddings = zip(texts, vectors)
+                metadata = [document.metadata for document in documents]
+                ids = [self._document_id(document, index) for index, document in enumerate(documents)]
+                self.vector_store = FAISS.from_embeddings(
+                    text_embeddings,
+                    self.embeddings,
+                    metadatas=metadata,
+                    ids=ids,
+                    distance_strategy=DistanceStrategy.MAX_INNER_PRODUCT,
+                )
+                self._save_faiss()
+                config.logger.info(f"Created FAISS cosine index with {len(documents)} documents")
         else:
             # 添加文档到现有存储
             if self.use_milvus:
@@ -178,12 +358,72 @@ class VectorStoreManager:
                 self.vector_store.add_documents(documents)
                 config.logger.info(f"Added {len(documents)} documents to Milvus")
             else:
-                # FAISS添加文档
-                self.vector_store.add_documents(documents)
-                self.vector_store.save_local(self.persist_directory)
-                config.logger.info(f"Added {len(documents)} documents to FAISS")
+                texts = [document.page_content for document in documents]
+                text_embeddings = zip(texts, self.embeddings.embed_documents(texts))
+                metadata = [document.metadata for document in documents]
+                ids = [self._document_id(document, index) for index, document in enumerate(documents)]
+                self.vector_store.add_embeddings(
+                    text_embeddings,
+                    metadatas=metadata,
+                    ids=ids,
+                )
+                self._save_faiss()
+                config.logger.info(f"Added {len(documents)} documents to FAISS cosine index")
 
-    def search(self, query: str, k: int = 3, filter_dict: Optional[Dict[str, Any]] = None, similarity_threshold: float = 0.75, use_rerank: bool = True) -> List[Document]:
+    @staticmethod
+    def _document_id(document: Document, fallback_index: int) -> str:
+        metadata = document.metadata or {}
+        doc_id = metadata.get("doc_id")
+        chunk_index = metadata.get("chunk_index", fallback_index)
+        chunk_id = metadata.get("chunk_id")
+        if chunk_id is not None:
+            return f"doc-{doc_id}-chunk-row-{chunk_id}"
+        if doc_id is not None:
+            return f"doc-{doc_id}-chunk-{chunk_index}"
+        source = metadata.get("source")
+        if source:
+            return f"{source}-chunk-{chunk_index}"
+        return f"chunk-{fallback_index}"
+
+    def create_empty_index(self):
+        """Create a valid, compatible FAISS index with zero vectors."""
+        if self.use_milvus:
+            raise VectorIndexUnavailableError(
+                "create_empty_index is only supported for FAISS"
+            )
+        self.vector_store = FAISS(
+            embedding_function=self.embeddings,
+            index=faiss.IndexFlatIP(self.embedding_dimension),
+            docstore=InMemoryDocstore(),
+            index_to_docstore_id={},
+            distance_strategy=DistanceStrategy.MAX_INNER_PRODUCT,
+        )
+        self._save_faiss()
+
+    def _save_faiss(self):
+        self.vector_store.save_local(self.persist_directory)
+        documents = list(self.vector_store.docstore._dict.values())
+        document_ids = {
+            document.metadata.get("doc_id")
+            for document in documents
+            if document.metadata.get("doc_id") is not None
+        }
+        manifest = IndexManifest.build(
+            embedding_provider=self.embedding_provider,
+            embedding_model=self.embedding_model,
+            embedding_dimension=self.embedding_dimension,
+            document_count=len(document_ids),
+            chunk_count=int(self.vector_store.index.ntotal),
+            source_policy="active_completed",
+            score_metric="cosine",
+        )
+        write_manifest(self.persist_directory, manifest)
+        self._manifest_mtime_ns = self._get_manifest_mtime()
+        self.manifest = manifest
+        self._health_status = "HEALTHY" if self.vector_store.index.ntotal else "EMPTY"
+        self._health_message = "向量索引可检索" if self.vector_store.index.ntotal else "向量索引为空"
+
+    def search(self, query: str, k: int = 3, filter_dict: Optional[Dict[str, Any]] = None, similarity_threshold: float = DEFAULT_SIMILARITY_THRESHOLD, use_rerank: bool = True) -> List[Document]:
         """
         相似度搜索
 
@@ -196,8 +436,12 @@ class VectorStoreManager:
         """
         import time
         start_time = time.time()
-        
-        if self.vector_store is None:
+
+        health = self.get_health()
+        if health["status"] == "UNAVAILABLE":
+            raise VectorIndexUnavailableError(health["message"])
+
+        if self.vector_store is None or health["status"] == "EMPTY":
             config.logger.info(f"Search completed in {time.time() - start_time:.4f}s, no vector store available")
             return []
 
@@ -231,6 +475,8 @@ class VectorStoreManager:
                 filtered_docs = []
                 for i, (doc, score) in enumerate(docs_with_scores):
                     if score >= similarity_threshold:
+                        doc.metadata = dict(doc.metadata or {})
+                        doc.metadata["score"] = float(score)
                         filtered_docs.append(doc)
                         config.logger.debug(f"Document similarity score: {score}")
                     else:
@@ -238,10 +484,24 @@ class VectorStoreManager:
                 config.logger.info(f"Search completed in {time.time() - start_time:.4f}s, returning {len(filtered_docs)} documents")
                 return filtered_docs
 
+            candidate_docs = []
+            for doc, score in docs_with_scores:
+                if score >= similarity_threshold:
+                    doc.metadata = dict(doc.metadata or {})
+                    doc.metadata["score"] = float(score)
+                    candidate_docs.append(doc)
+
+            if not candidate_docs:
+                config.logger.info(
+                    f"Search completed in {time.time() - start_time:.4f}s, "
+                    "returning 0 documents after similarity filtering"
+                )
+                return []
+
             # 使用Rerank进行重排序
             try:
                 rerank_start = time.time()
-                rerank_results = self.reranker.rerank(query, docs, top_k=k)
+                rerank_results = self.reranker.rerank(query, candidate_docs, top_k=k)
                 rerank_time = time.time() - rerank_start
                 config.logger.info(f"Rerank completed in {rerank_time:.4f}s, top {len(rerank_results)} results")
 
@@ -260,26 +520,17 @@ class VectorStoreManager:
                 filtered_docs = []
                 for doc, score in docs_with_scores:
                     if score >= similarity_threshold:
+                        doc.metadata = dict(doc.metadata or {})
+                        doc.metadata["score"] = float(score)
                         filtered_docs.append(doc)
                 config.logger.info(f"Search completed in {time.time() - start_time:.4f}s (Rerank failed, fallback to vector search), returning {len(filtered_docs)} documents")
                 return filtered_docs
 
+        except VectorIndexUnavailableError:
+            raise
         except Exception as e:
-            config.logger.error(f"Search error: {e}")
-            # 如果 similarity_search_with_score 失败，回退到普通搜索
-            try:
-                fallback_start = time.time()
-                if self.use_milvus and filter_dict:
-                    result = self.vector_store.similarity_search(query, k=k, filter=filter_dict)
-                else:
-                    result = self.vector_store.similarity_search(query, k=k)
-                fallback_time = time.time() - fallback_start
-                config.logger.info(f"Fallback search completed in {fallback_time:.4f}s, returning {len(result)} documents")
-                return result
-            except Exception as e2:
-                config.logger.error(f"Fallback search also failed: {e2}")
-                config.logger.info(f"Search completed in {time.time() - start_time:.4f}s (all searches failed), returning empty results")
-                return []
+            config.logger.error(f"Search error: {e}", exc_info=True)
+            raise VectorIndexUnavailableError(f"向量检索失败: {e}") from e
 
     def delete_document(self, doc_id: int):
         """
@@ -288,6 +539,10 @@ class VectorStoreManager:
         Milvus: 支持高效删除
         FAISS: 标记删除（实际需要重建索引）
         """
+        health = self.get_health()
+        if health["status"] == "UNAVAILABLE":
+            raise VectorIndexUnavailableError(health["message"])
+
         if self.vector_store is None:
             config.logger.warning(f"No vector store available, cannot delete doc_id: {doc_id}")
             return
@@ -360,7 +615,7 @@ class VectorStoreManager:
             if ids_to_delete:
                 # FAISS的delete方法可能不彻底，这里尝试删除
                 self.vector_store.delete(ids_to_delete)
-                self.vector_store.save_local(self.persist_directory)
+                self._save_faiss()
                 config.logger.info(f"Deleted {len(ids_to_delete)} chunks for doc_id {doc_id}")
 
                 # 建议：定期重建FAISS索引以提高效率
@@ -396,6 +651,7 @@ class VectorStoreManager:
             "using_milvus": self.use_milvus,
             "collection_name": self.collection_name if self.use_milvus else None,
             "persist_directory": self.persist_directory if not self.use_milvus else None,
+            "health": self.get_health(),
         }
 
         if self.use_milvus and self.vector_store:
@@ -453,8 +709,15 @@ class VectorStoreManager:
             return False
 
 
-# 创建单例实例
-vector_store_manager = VectorStoreManager()
+# 测试可以通过环境变量关闭全局实例，避免加载真实 embedding 模型和索引。
+if os.getenv("VECTOR_STORE_DISABLE_GLOBAL_INIT", "false").lower() in {
+    "1",
+    "true",
+    "yes",
+}:
+    vector_store_manager = None
+else:
+    vector_store_manager = VectorStoreManager()
 
 # 导出（保持兼容性，同时保留完整管理器）
 vector_store = vector_store_manager

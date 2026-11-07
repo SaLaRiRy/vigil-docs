@@ -2,6 +2,7 @@ from typing import Dict, Any
 from tools.base import Tool, ToolSchema, SchemaProperty, ToolMetadata
 from core.vector_store import vector_store
 from core.config import config
+from core.vector_index import DEFAULT_SIMILARITY_THRESHOLD
 
 
 class KnowledgeSearchTool(Tool):
@@ -25,7 +26,7 @@ class KnowledgeSearchTool(Tool):
                     type="number",
                     description="相似度阈值",
                     required=False,
-                    default=0.75
+                    default=DEFAULT_SIMILARITY_THRESHOLD
                 ),
                 "use_rerank": SchemaProperty(
                     type="boolean",
@@ -75,7 +76,9 @@ class KnowledgeSearchTool(Tool):
         """执行知识库检索"""
         query = parameters.get("query")
         top_k = int(parameters.get("top_k", 3))
-        similarity_threshold = parameters.get("similarity_threshold", 0.75)
+        similarity_threshold = parameters.get(
+            "similarity_threshold", DEFAULT_SIMILARITY_THRESHOLD
+        )
         use_rerank = parameters.get("use_rerank", True)
 
         # 执行检索
@@ -94,7 +97,12 @@ class KnowledgeSearchTool(Tool):
                 "content": doc.page_content,
                 "metadata": doc.metadata
             })
-            scores.append(getattr(doc, 'score', 0.5))
+            scores.append(
+                float(
+                    getattr(doc, "score", None)
+                    or doc.metadata.get("score", 0.0)
+                )
+            )
 
         return {
             "documents": formatted_docs,

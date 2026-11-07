@@ -82,6 +82,10 @@ export const qaLogAPI = {
     api.get(`/logs?page=${page}&size=${size}`),
 };
 
+export const systemHealthAPI = {
+  get: (config = {}) => api.get('/system-health', { timeout: 10000, ...config }),
+};
+
 export const approvalAPI = {
   listPending: () => api.get('/approvals/pending'),
   get: (approvalId) => api.get(`/approvals/${approvalId}`),

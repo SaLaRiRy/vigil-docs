@@ -23,4 +23,5 @@ public class DocumentProcessingRepository {
                 "UPDATE document_processing SET attempts = 0, dead_lettered = 0, last_error = NULL WHERE doc_id = ?",
                 documentId);
     }
+
 }

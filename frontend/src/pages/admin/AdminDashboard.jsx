@@ -1,12 +1,84 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useRef, useState, useEffect } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
+import { systemHealthAPI } from '../../api/admin';
 import './AdminDashboard.css';
+
+function AdminHealthBanner({ health, error, loading, onRetry }) {
+  if (loading) {
+    return (
+      <div className="system-health-banner healthy" role="status">
+        <div>
+          <strong>正在获取系统健康状态</strong>
+          <span>索引和文档处理状态检查中…</span>
+        </div>
+      </div>
+    );
+  }
+  const vectorStatus = health?.vectorIndex?.status;
+  const consumerStatus = health?.documentConsumer?.status;
+  const degraded =
+    error ||
+    (vectorStatus && !['HEALTHY', 'EMPTY'].includes(vectorStatus)) ||
+    (consumerStatus && consumerStatus !== 'HEALTHY');
+  const className = degraded ? 'system-health-banner degraded' : 'system-health-banner healthy';
+
+  return (
+    <div className={className} role={degraded ? 'alert' : 'status'}>
+      <div>
+        <strong>{degraded ? '系统需要检查' : '系统运行正常'}</strong>
+        <span>
+          {error ||
+            `索引：${vectorStatus || '未知'} · Consumer：${consumerStatus || '未知'}${
+              health?.documentConsumer
+                ? ` · 队列 ${health.documentConsumer.queueDepth ?? 0} · Consumer ${health.documentConsumer.consumerCount ?? 0} · PENDING ${health.documentConsumer.pendingCount ?? 0} · 处理中 ${health.documentConsumer.processingCount ?? 0} · 滞留 ${health.documentConsumer.stalePendingCount ?? 0} · 最大尝试 ${health.documentConsumer.maxProcessingAttempts ?? 0}`
+                : ''
+            }`}
+        </span>
+        {(health?.vectorIndex?.message || health?.documentConsumer?.message) && (
+          <span>{health.vectorIndex?.message || health.documentConsumer?.message}</span>
+        )}
+        {health?.vectorIndex?.indexedDocumentIds?.length > 0 && (
+          <span>
+            已索引文档：
+            {health.vectorIndex.indexedDocumentIds.slice(0, 20).join(', ')}
+            {health.vectorIndex.indexedDocumentIds.length > 20
+              ? ` 等 ${health.vectorIndex.indexedDocumentIds.length} 个`
+              : ''}
+          </span>
+        )}
+      </div>
+      <button type="button" className="btn btn-default" onClick={onRetry}>
+        刷新状态
+      </button>
+    </div>
+  );
+}
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
   const location = useLocation();
   const [adminInfo, setAdminInfo] = useState(null);
   const [activeMenu, setActiveMenu] = useState('users');
+  const [systemHealth, setSystemHealth] = useState(null);
+  const [healthError, setHealthError] = useState(null);
+  const [healthLoading, setHealthLoading] = useState(true);
+  const healthRequestInFlight = useRef(false);
+
+  const loadSystemHealth = useCallback(async () => {
+    if (healthRequestInFlight.current) return;
+    healthRequestInFlight.current = true;
+    setHealthLoading(true);
+    setHealthError(null);
+    try {
+      const response = await systemHealthAPI.get();
+      setSystemHealth(response.data);
+    } catch {
+      setHealthError('无法获取系统健康状态');
+    } finally {
+      healthRequestInFlight.current = false;
+      setHealthLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     document.title = 'VigilDocs - 管理后台';
@@ -34,6 +106,12 @@ export default function AdminDashboard() {
     else if (path.includes('/reports')) setActiveMenu('reports');
     else if (path.includes('/chat')) setActiveMenu('chat');
   }, [navigate, location.pathname]);
+
+  useEffect(() => {
+    loadSystemHealth();
+    const timer = window.setInterval(loadSystemHealth, 30000);
+    return () => window.clearInterval(timer);
+  }, [loadSystemHealth]);
 
   const handleLogout = () => {
     localStorage.removeItem('adminToken');
@@ -89,6 +167,12 @@ export default function AdminDashboard() {
       </div>
 
       <div className="admin-main">
+        <AdminHealthBanner
+          health={systemHealth}
+          error={healthError}
+          loading={healthLoading}
+          onRetry={loadSystemHealth}
+        />
         <Outlet />
       </div>
     </div>

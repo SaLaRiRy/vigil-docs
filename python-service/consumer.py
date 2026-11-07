@@ -1,9 +1,13 @@
 import json
 import logging
+from pathlib import Path
 import time
 from typing import Any, Dict
 
 import pika
+from dotenv import load_dotenv
+
+load_dotenv(dotenv_path=Path(__file__).parent / ".env")
 
 from core.approval_consumer import ApprovalDecisionHandler
 from core.approval_execution import ApprovalExecutionService
@@ -12,6 +16,7 @@ from core.document_processor import DocumentProcessor, ProcessingAttemptFailed
 from core.message_contract import MessageContractError, validate_document_message
 from core.mysql_client import mysql_client
 from core.parser import DocumentParser
+from core.runtime_health import index_ready_for_consumption
 from core.vector_store import vector_store
 from tools.delete_document import DeleteDocumentTool
 from tools.registry import tool_registry
@@ -90,6 +95,41 @@ def handle_document_message(
             publish_json(channel, RETRY_ROUTING_KEY, payload)
 
 
+def process_document_delivery(
+    *,
+    channel,
+    delivery_tag: int,
+    body: bytes,
+    processor: DocumentProcessor,
+    vector_store,
+) -> bool:
+    """Process one delivery only while the vector index is ready."""
+    if not index_ready_for_consumption(vector_store):
+        try:
+            health = vector_store.get_health()
+        except Exception:
+            health = {
+                "status": "UNAVAILABLE",
+                "message": "health check raised an exception",
+            }
+        logging.error(
+            "Document delivery requeued: vector index is %s (%s)",
+            health.get("status"),
+            health.get("message"),
+        )
+        channel.basic_nack(delivery_tag=delivery_tag, requeue=True)
+        channel.stop_consuming()
+        return False
+
+    try:
+        handle_document_message(channel, body, processor)
+    except Exception:
+        channel.basic_nack(delivery_tag=delivery_tag, requeue=True)
+        raise
+    channel.basic_ack(delivery_tag=delivery_tag)
+    return True
+
+
 def make_connection() -> pika.BlockingConnection:
     credentials = pika.PlainCredentials(config.RABBITMQ_USERNAME, config.RABBITMQ_PASSWORD)
     return pika.BlockingConnection(
@@ -104,23 +144,35 @@ def make_connection() -> pika.BlockingConnection:
 
 def main() -> None:
     while True:
+        connection = None
         try:
             connection = make_connection()
             channel = connection.channel()
             channel.basic_qos(prefetch_count=1)
             declare_topology(channel)
+            if not index_ready_for_consumption(vector_store):
+                health = vector_store.get_health()
+                logging.error(
+                    "Document consumer paused: vector index is %s (%s)",
+                    health.get("status"),
+                    health.get("message"),
+                )
+                connection.close()
+                time.sleep(3)
+                continue
             processor = DocumentProcessor(DocumentParser(), mysql_client, vector_store)
             approval_executor = ApprovalExecutionService(mysql_client, vector_store)
             tool_registry.register_tool(DeleteDocumentTool(approval_executor))
             approval_handler = ApprovalDecisionHandler(approval_executor, tool_registry)
 
             def callback(ch, method, properties, message_body):
-                try:
-                    handle_document_message(ch, message_body, processor)
-                finally:
-                    # Status is terminal, or the retry/dead-letter message has
-                    # been durably accepted before the original delivery is acked.
-                    ch.basic_ack(delivery_tag=method.delivery_tag)
+                process_document_delivery(
+                    channel=ch,
+                    delivery_tag=method.delivery_tag,
+                    body=message_body,
+                    processor=processor,
+                    vector_store=vector_store,
+                )
 
             channel.basic_consume(queue=config.DOCUMENT_QUEUE, on_message_callback=callback)
             def approval_callback(ch, method, properties, message_body):
@@ -140,6 +192,9 @@ def main() -> None:
         except Exception:
             logging.exception("Document consumer disconnected; retrying")
             time.sleep(3)
+        finally:
+            if connection is not None and connection.is_open:
+                connection.close()
 
 
 if __name__ == "__main__":

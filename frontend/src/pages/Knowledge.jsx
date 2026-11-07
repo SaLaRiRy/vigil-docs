@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { knowledgeAPI } from '../api/index';
 import './Knowledge.css';
@@ -22,8 +22,11 @@ export default function Knowledge() {
   const [uploading, setUploading] = useState(false);
   const [selectedFile, setSelectedFile] = useState(null);
   const [message, setMessage] = useState('');
+  const documentsRequestInFlight = useRef(false);
 
   const loadDocuments = useCallback(async (silent = false) => {
+    if (documentsRequestInFlight.current) return;
+    documentsRequestInFlight.current = true;
     if (!silent) setLoading(true);
     try {
       const response = await knowledgeAPI.list();
@@ -32,6 +35,7 @@ export default function Knowledge() {
       console.error('Failed to load documents', error);
       if (!silent) setMessage(error.message || '加载文档失败');
     } finally {
+      documentsRequestInFlight.current = false;
       if (!silent) setLoading(false);
     }
   }, []);
