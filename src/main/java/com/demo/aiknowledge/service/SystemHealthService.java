@@ -1,6 +1,7 @@
 package com.demo.aiknowledge.service;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
@@ -15,7 +16,7 @@ public class SystemHealthService {
     private final String aiServiceUrl;
 
     public SystemHealthService(
-            RestTemplate restTemplate,
+            @Qualifier("systemHealthRestTemplate") RestTemplate restTemplate,
             @Value("${ai.service.url}") String aiServiceUrl) {
         this.restTemplate = restTemplate;
         this.aiServiceUrl = aiServiceUrl;

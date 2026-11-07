@@ -1,17 +1,37 @@
 package com.demo.aiknowledge.service;
 
+import com.demo.aiknowledge.config.RestTemplateConfig;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.Map;
+import java.lang.reflect.Field;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 class SystemHealthServiceTest {
+
+    @Test
+    void healthClientUsesAShortReadTimeout() throws Exception {
+        RestTemplate client = new RestTemplateConfig().systemHealthRestTemplate();
+        SimpleClientHttpRequestFactory factory =
+                (SimpleClientHttpRequestFactory) client.getRequestFactory();
+
+        Field connectTimeout = SimpleClientHttpRequestFactory.class
+                .getDeclaredField("connectTimeout");
+        Field readTimeout = SimpleClientHttpRequestFactory.class
+                .getDeclaredField("readTimeout");
+        connectTimeout.setAccessible(true);
+        readTimeout.setAccessible(true);
+
+        assertThat(connectTimeout.get(factory)).isEqualTo(2000);
+        assertThat(readTimeout.get(factory)).isEqualTo(5000);
+    }
 
     @Test
     void returnsPythonRuntimeHealthContract() {

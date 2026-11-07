@@ -35,8 +35,12 @@ const adminChatAPI = {
     adminApi.post(`/conversations?adminId=${adminId}&title=${title || ''}`),
   getConversations: (adminId) =>
     adminApi.get(`/conversations?adminId=${adminId}`),
-  sendMessage: (adminId, conversationId, content) =>
-    adminApi.post(`/messages?adminId=${adminId}&conversationId=${conversationId}`, { content }),
+  sendMessage: (adminId, conversationId, content, config = {}) =>
+    adminApi.post(
+      `/messages?adminId=${adminId}&conversationId=${conversationId}`,
+      { content },
+      config,
+    ),
   getMessages: (conversationId) =>
     adminApi.get(`/messages?conversationId=${conversationId}`),
   deleteConversation: (id) => adminApi.delete(`/conversations/${id}`),
@@ -61,6 +65,7 @@ export default function AdminChat() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteConversationId, setDeleteConversationId] = useState(null);
   const [abortController, setAbortController] = useState(null);
+  const sendingRef = useRef(false);
   const [abortedRequests, setAbortedRequests] = useState(new Set());
   const messagesEndRef = useRef(null);
   const menuRef = useRef(null);
@@ -295,6 +300,8 @@ export default function AdminChat() {
     e.preventDefault();
     if (!inputMessage.trim()) return;
     if (!currentConversation) return;
+    if (sendingRef.current) return;
+    sendingRef.current = true;
 
     const userMessage = {
       id: Date.now(),
@@ -328,7 +335,12 @@ export default function AdminChat() {
     setAbortController(controller);
 
     try {
-      const response = await adminChatAPI.sendMessage(adminId, currentConversation.id, inputMessage);
+      const response = await adminChatAPI.sendMessage(
+        adminId,
+        currentConversation.id,
+        inputMessage,
+        { signal: controller.signal },
+      );
 
       if (abortedRequests.has(requestId)) {
         console.log('Request was aborted, skipping response processing');
@@ -349,9 +361,6 @@ export default function AdminChat() {
       };
 
       setMessages(prev => prev.map(msg => msg.id === thinkingMessageId ? aiMessage : msg));
-      setLoading(false);
-      setProcessingStep(null);
-      setAbortController(null);
 
       loadConversations();
 
@@ -384,9 +393,11 @@ export default function AdminChat() {
         };
         setMessages(prev => prev.map(msg => msg.id === thinkingMessageId ? errorMessage : msg));
       }
+    } finally {
       setLoading(false);
       setProcessingStep(null);
       setAbortController(null);
+      sendingRef.current = false;
     }
   };
 
@@ -617,6 +628,7 @@ export default function AdminChat() {
                         handleSendMessage(e);
                       }
                     }}
+                    disabled={loading}
                     placeholder="给管理助手发送消息..."
                     rows={1}
                   />
@@ -631,7 +643,11 @@ export default function AdminChat() {
                         ⏹️
                       </button>
                     )}
-                    <button type="submit" className="admin-send-btn" disabled={!inputMessage.trim()}>
+                    <button
+                      type="submit"
+                      className="admin-send-btn"
+                      disabled={!inputMessage.trim() || loading}
+                    >
                       ➤
                     </button>
                   </div>

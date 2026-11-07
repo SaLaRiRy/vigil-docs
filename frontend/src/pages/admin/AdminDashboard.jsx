@@ -1,4 +1,4 @@
-import { useCallback, useState, useEffect } from 'react';
+import { useCallback, useRef, useState, useEffect } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { systemHealthAPI } from '../../api/admin';
 import './AdminDashboard.css';
@@ -62,8 +62,11 @@ export default function AdminDashboard() {
   const [systemHealth, setSystemHealth] = useState(null);
   const [healthError, setHealthError] = useState(null);
   const [healthLoading, setHealthLoading] = useState(true);
+  const healthRequestInFlight = useRef(false);
 
   const loadSystemHealth = useCallback(async () => {
+    if (healthRequestInFlight.current) return;
+    healthRequestInFlight.current = true;
     setHealthLoading(true);
     setHealthError(null);
     try {
@@ -72,6 +75,7 @@ export default function AdminDashboard() {
     } catch {
       setHealthError('无法获取系统健康状态');
     } finally {
+      healthRequestInFlight.current = false;
       setHealthLoading(false);
     }
   }, []);

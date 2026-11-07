@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { knowledgeManagementAPI } from '../../api/admin';
 import './AdminDashboard.css';
 import { AdminEmptyState, AdminRequestError } from './AdminRequestState';
@@ -14,12 +14,15 @@ export default function KnowledgeManagement() {
   const [messageModalContent, setMessageModalContent] = useState('');
   const [messageModalTitle, setMessageModalTitle] = useState('提示');
   const [error, setError] = useState(null);
+  const documentsRequestInFlight = useRef(false);
 
   useEffect(() => {
     loadDocuments();
   }, []);
 
   const loadDocuments = async ({ showLoading = true } = {}) => {
+    if (documentsRequestInFlight.current) return;
+    documentsRequestInFlight.current = true;
     if (showLoading) {
       setLoading(true);
     }
@@ -35,6 +38,7 @@ export default function KnowledgeManagement() {
       console.error('加载文档列表失败:', err);
       setError('加载文档列表失败');
     } finally {
+      documentsRequestInFlight.current = false;
       setLoading(false);
     }
   };

@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+from starlette.concurrency import iterate_in_threadpool, run_in_threadpool
 from workflows import RouterAgent
 from agent.state import AgentState
 from agent.events import event_bus, Event
@@ -101,7 +102,8 @@ async def run_agent(request: AgentRunRequest):
     try:
         logger.info(f"[Agent API] Received run request: {request.input[:50]}..., is_admin={request.is_admin}")
 
-        result = router_agent.route(
+        result = await run_in_threadpool(
+            router_agent.route,
             input_text=request.input,
             conversation_id=request.conversation_id,
             user_id=request.user_id,
@@ -184,15 +186,17 @@ async def run_agent_stream(request: AgentRunRequest):
         try:
             logger.info(f"[Agent API] Stream request: {request.input[:50]}..., is_admin={request.is_admin}")
 
-            for event_data in router_agent.route_stream(
-                input_text=request.input,
-                conversation_id=request.conversation_id,
-                user_id=request.user_id,
-                context=request.context or "",
-                is_admin=request.is_admin,
-                goal=request.goal,
-                run_id=request.run_id,
-                trace_id=request.trace_id
+            async for event_data in iterate_in_threadpool(
+                router_agent.route_stream(
+                    input_text=request.input,
+                    conversation_id=request.conversation_id,
+                    user_id=request.user_id,
+                    context=request.context or "",
+                    is_admin=request.is_admin,
+                    goal=request.goal,
+                    run_id=request.run_id,
+                    trace_id=request.trace_id,
+                )
             ):
                 parsed = json.loads(event_data.strip().replace("data: ", "").replace("\n\n", ""))
                 if parsed.get("type") == "routed":

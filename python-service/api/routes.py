@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+from starlette.concurrency import iterate_in_threadpool, run_in_threadpool
 from core.parser import DocumentParser
 from core.vector_store import vector_store
 from core.llm import LLMService
@@ -265,7 +266,8 @@ async def ask_question(request: ChatRequest):
             response = {"answer": answer, "sources": [], "task_type": "chitchat"}
         else:
             # 使用 RouterAgent 进行任务路由
-            result = router_agent.route(
+            result = await run_in_threadpool(
+                router_agent.route,
                 input_text=request.question,
                 conversation_id=request.conversation_id,
                 context=request.context,
@@ -344,11 +346,13 @@ async def ask_question_stream(request: ChatRequest):
                 return
 
             # 使用 RouterAgent 进行流式任务路由
-            for event_data in router_agent.route_stream(
-                input_text=request.question,
-                context=request.context,
-                username=request.username,
-                is_admin=request.is_admin
+            async for event_data in iterate_in_threadpool(
+                router_agent.route_stream(
+                    input_text=request.question,
+                    context=request.context,
+                    username=request.username,
+                    is_admin=request.is_admin,
+                )
             ):
                 yield f"data: {event_data}\n\n"
 
@@ -486,7 +490,7 @@ async def get_vector_store_stats():
     """
     start_time = time.time()
     try:
-        stats = vector_store.get_stats()
+        stats = await run_in_threadpool(vector_store.get_stats)
 
         process_time = time.time() - start_time
         logger.info(
@@ -515,13 +519,13 @@ async def get_vector_store_stats():
 @router.get("/health")
 async def vector_store_health():
     """暴露向量索引兼容性和可检索状态。"""
-    return vector_store.get_health()
+    return await run_in_threadpool(vector_store.get_health)
 
 
 @router.get("/runtime-health")
 async def runtime_health():
     """暴露索引、文档 consumer、队列深度和滞留 PENDING 状态。"""
-    return get_runtime_health(vector_store, mysql_client)
+    return await run_in_threadpool(get_runtime_health, vector_store, mysql_client)
 
 @router.post("/vector-store/migrate")
 async def migrate_to_milvus():

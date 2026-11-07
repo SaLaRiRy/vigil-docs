@@ -83,7 +83,7 @@ export const qaLogAPI = {
 };
 
 export const systemHealthAPI = {
-  get: () => api.get('/system-health'),
+  get: (config = {}) => api.get('/system-health', { timeout: 10000, ...config }),
 };
 
 export const approvalAPI = {

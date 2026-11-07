@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.concurrency import run_in_threadpool
 import uvicorn
 from pathlib import Path
 from dotenv import load_dotenv
@@ -48,7 +49,7 @@ async def health_check():
     milvus_port = os.getenv("MILVUS_PORT", "19530")
 
     # 检查实际的索引兼容性和可检索状态
-    vector_store_info = vector_store.get_health()
+    vector_store_info = await run_in_threadpool(vector_store.get_health)
     if use_milvus:
         vector_store_info.update({
             "host": milvus_host,

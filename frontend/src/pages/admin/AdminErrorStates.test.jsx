@@ -37,6 +37,7 @@ describe('admin request states', () => {
   afterEach(() => {
     cleanup();
     localStorage.clear();
+    vi.useRealTimers();
   });
 
   beforeEach(() => {
@@ -161,6 +162,83 @@ describe('admin request states', () => {
     });
     expect(listDocuments).toHaveBeenCalledTimes(2);
     vi.useRealTimers();
+  });
+
+  it('does not overlap document polling while one request is pending', async () => {
+    vi.useFakeTimers();
+    let resolveDocuments;
+    listDocuments.mockReturnValue(new Promise(resolve => {
+      resolveDocuments = resolve;
+    }));
+
+    render(
+      <MemoryRouter>
+        <KnowledgeManagement />
+      </MemoryRouter>,
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(listDocuments).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      vi.advanceTimersByTime(2000);
+      await Promise.resolve();
+    });
+    expect(listDocuments).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveDocuments({ data: [] });
+      await Promise.resolve();
+    });
+    expect(screen.getByText('暂无文档，请先上传')).toBeInTheDocument();
+  });
+
+  it('does not overlap health checks while one is pending', async () => {
+    localStorage.setItem('adminInfo', JSON.stringify({ username: 'admin', role: 'ADMIN' }));
+    vi.useFakeTimers();
+    let resolveHealth;
+    getSystemHealth.mockReturnValue(new Promise(resolve => {
+      resolveHealth = resolve;
+    }));
+
+    render(
+      <MemoryRouter initialEntries={['/admin/dashboard']}>
+        <Routes>
+          <Route path="/admin" element={<AdminDashboard />}>
+            <Route path="dashboard" element={<div>dashboard content</div>} />
+          </Route>
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(getSystemHealth).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      vi.advanceTimersByTime(95000);
+      await Promise.resolve();
+    });
+    expect(getSystemHealth).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveHealth({
+        data: {
+          vectorIndex: { status: 'HEALTHY' },
+          documentConsumer: { status: 'HEALTHY' },
+        },
+      });
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(30000);
+      await Promise.resolve();
+    });
+    expect(getSystemHealth).toHaveBeenCalledTimes(2);
   });
 
 });

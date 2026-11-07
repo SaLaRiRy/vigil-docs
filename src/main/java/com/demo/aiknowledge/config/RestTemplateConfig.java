@@ -2,6 +2,7 @@ package com.demo.aiknowledge.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Primary;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -10,10 +11,19 @@ import org.springframework.web.reactive.function.client.WebClient;
 public class RestTemplateConfig {
 
     @Bean
+    @Primary
     public RestTemplate restTemplate() {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(5000);
         factory.setReadTimeout(180000); // AI 服务响应较慢（向量检索+LLM），设置3分钟超时
+        return new RestTemplate(factory);
+    }
+
+    @Bean("systemHealthRestTemplate")
+    public RestTemplate systemHealthRestTemplate() {
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(2000);
+        factory.setReadTimeout(5000);
         return new RestTemplate(factory);
     }
 
