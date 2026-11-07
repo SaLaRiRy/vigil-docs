@@ -232,7 +232,12 @@ class MySQLClient:
                 (doc_id,),
             )
             row = cursor.fetchone()
-            if not row or row[0] in ("DELETED", "WAITING_APPROVAL"):
+            if not row or row[0] not in (
+                "PENDING",
+                "PROCESSING",
+                "COMPLETED",
+                "FAILED",
+            ):
                 self.connection.rollback()
                 return 0
             cursor.execute("DELETE FROM knowledge_chunk WHERE doc_id = %s", (doc_id,))
@@ -265,7 +270,10 @@ class MySQLClient:
                 (doc_id,),
             )
             self.connection.commit()
-            return cursor.rowcount
+            # The transaction completed with the document still eligible for
+            # processing. A later UPDATE may legitimately affect zero rows when
+            # it re-writes the same NULL/0 metadata values.
+            return 1
         except Exception:
             self.connection.rollback()
             raise

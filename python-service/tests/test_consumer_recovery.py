@@ -28,6 +28,9 @@ class FakeWorkCounter:
     def list_ids(self):
         return [47, 48]
 
+    def list_completed_document_ids(self):
+        return []
+
 
 class FakeProcessor:
     def __init__(self):

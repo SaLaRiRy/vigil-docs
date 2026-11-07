@@ -59,6 +59,7 @@ Invoke-RestMethod http://127.0.0.1:8000/api/runtime-health
 期望结果：
 
 - `vectorIndex.status` 为 `HEALTHY` 或 `EMPTY`。
+- 所有 `COMPLETED` 文档 ID 都应出现在 `indexedDocumentIds`；缺失时状态会变为 `DEGRADED`。
 - 文档 consumer 运行时，`documentConsumer.consumerCount` 大于 0。
 - 查询命中时返回文档引用；没有命中时返回正常 no-match；索引故障时返回 `INDEX_UNAVAILABLE`。
 

@@ -35,6 +35,7 @@ class FakeDocumentWorkCounter:
         stale=0,
         max_attempts=0,
         stale_document_ids=None,
+        completed_document_ids=None,
     ):
         self.stale_document_ids = (
             list(stale_document_ids) if stale_document_ids is not None else []
@@ -45,12 +46,20 @@ class FakeDocumentWorkCounter:
             "stalePendingCount": stale,
             "maxProcessingAttempts": max_attempts,
         }
+        self.completed_document_ids = (
+            list(completed_document_ids)
+            if completed_document_ids is not None
+            else []
+        )
 
     def snapshot(self):
         return dict(self.values)
 
     def list_ids(self):
         return list(self.stale_document_ids)
+
+    def list_completed_document_ids(self):
+        return list(self.completed_document_ids)
 
 
 def test_unavailable_index_blocks_consumption():
@@ -108,3 +117,23 @@ def test_stale_pending_document_ids_remain_visible():
     )
 
     assert health["documentConsumer"]["stalePendingDocumentIds"] == [47]
+
+
+def test_completed_document_missing_from_index_is_degraded():
+    vector_store = FakeVectorStore("HEALTHY")
+    vector_store.get_health = lambda: {
+        "status": "HEALTHY",
+        "message": "向量索引可检索",
+        "indexedDocumentIds": [46],
+    }
+    health = build_runtime_health(
+        vector_store=vector_store,
+        queue_inspector=FakeQueueInspector(messages=0, consumers=1),
+        work_counter=FakeDocumentWorkCounter(
+            completed_document_ids=[46, 65],
+        ),
+    )
+
+    assert health["vectorIndex"]["status"] == "DEGRADED"
+    assert health["vectorIndex"]["missingDocumentIds"] == [65]
+    assert health["documentConsumer"]["status"] == "HEALTHY"

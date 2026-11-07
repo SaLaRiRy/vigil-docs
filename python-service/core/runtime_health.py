@@ -110,6 +110,18 @@ class DocumentWorkCounter:
         )
         return [int(row["id"]) for row in rows]
 
+    def list_completed_document_ids(self) -> list[int]:
+        rows = self.mysql.fetch_all(
+            """
+            SELECT id
+            FROM knowledge_doc
+            WHERE status = 'COMPLETED'
+            ORDER BY id
+            """,
+            raise_on_error=True,
+        )
+        return [int(row["id"]) for row in rows]
+
 
 def _consumer_status(
     *,
@@ -140,12 +152,25 @@ def build_runtime_health(
             "status": "UNAVAILABLE",
             "message": f"无法检查向量索引状态: {exc}",
         }
+    vector_health = dict(vector_health)
     index_status = vector_health.get("status", "UNAVAILABLE")
 
     stale_pending_document_ids = []
     try:
         work_snapshot = work_counter.snapshot()
         stale_pending_document_ids = list(work_counter.list_ids())
+        completed_document_ids = set(work_counter.list_completed_document_ids())
+        indexed_document_ids = {
+            int(doc_id) for doc_id in vector_health.get("indexedDocumentIds", [])
+        }
+        missing_document_ids = sorted(completed_document_ids - indexed_document_ids)
+        if missing_document_ids and index_status in READY_INDEX_STATUSES:
+            vector_health["status"] = "DEGRADED"
+            vector_health["message"] = (
+                "索引缺少已完成的文档: "
+                + ", ".join(str(doc_id) for doc_id in missing_document_ids)
+            )
+            vector_health["missingDocumentIds"] = missing_document_ids
     except Exception as exc:
         config.logger.warning("Unable to inspect pending document work: %s", exc)
         work_snapshot = {
